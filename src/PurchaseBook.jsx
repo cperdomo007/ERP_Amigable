@@ -1,6 +1,6 @@
 import React,{useState} from 'react';
 import {bookRollup} from './book-rollup.mjs';
-import * as D from './domain.mjs';
+import * as D from './client-domain.mjs';
 import {purchaseRow,purchaseSummary,savePurchaseRecord} from './purchase-book.mjs';
 const labels=[['invoiceDate','Fecha factura'],['supplier','RIF'],['supplierName','Nombre o razón social'],['voucher','Comprobante retención'],['importForm','Planilla importación Forma 86'],['importFile','Expediente importación'],['invoice','Factura'],['control','Control'],['debitNote','Nota débito'],['creditNote','Nota crédito'],['documentType','Tipo trans.'],['affectedInvoice','Factura afectada'],['total','Total compras con IVA'],['exempt','Exentas'],['notSubject','No sujetas'],['exonerated','Exoneradas'],['generalBase','Base general'],['generalRate','% general'],['generalTax','IVA general'],['reducedBase','Base reducida'],['reducedRate','% reducida'],['reducedTax','IVA reducida'],['additionalBase','Base general + adicional'],['additionalRate','% general + adicional'],['additionalTax','IVA general + adicional'],['retained','IVA retenido'],['retentionDate','Fecha retención']];
 const number=n=>new Intl.NumberFormat('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n||0);

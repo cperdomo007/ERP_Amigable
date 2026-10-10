@@ -122,3 +122,74 @@ CREATE TABLE IF NOT EXISTS SUMI_backups (
  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
  UNIQUE(company_id,revision), FOREIGN KEY(company_id) REFERENCES SUMI_companies(id)
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS SUMI_credentials (
+ company_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ user_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ password_hash VARCHAR(255) NOT NULL, is_owner BOOLEAN NOT NULL DEFAULT FALSE,
+ PRIMARY KEY(company_id,user_id), FOREIGN KEY(company_id) REFERENCES SUMI_companies(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS SUMI_sessions (
+ token_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+ company_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ user_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ expires_at DATETIME NOT NULL, FOREIGN KEY(company_id) REFERENCES SUMI_companies(id),
+ INDEX(expires_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS SUMI_refunds (
+ company_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ document_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ amount DECIMAL(20,2) NOT NULL, payload JSON NOT NULL,
+ PRIMARY KEY(company_id,id), FOREIGN KEY(company_id,document_id) REFERENCES SUMI_documents(company_id,id), CHECK(amount>0)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS SUMI_reconciliations (
+ company_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ payment_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ amount DECIMAL(20,2) NOT NULL, payload JSON NOT NULL,
+ PRIMARY KEY(company_id,id), UNIQUE(company_id,payment_id), FOREIGN KEY(company_id,payment_id) REFERENCES SUMI_payments(company_id,id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS SUMI_closures (
+ company_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ side VARCHAR(10) NOT NULL, currency CHAR(3) NOT NULL, status VARCHAR(20) NOT NULL,
+ start_date DATE NOT NULL, end_date DATE NOT NULL,
+ total DECIMAL(20,2) NOT NULL, balance DECIMAL(20,2) NOT NULL, payload JSON NOT NULL,
+ PRIMARY KEY(company_id,id), FOREIGN KEY(company_id) REFERENCES SUMI_companies(id), CHECK(start_date<=end_date)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS SUMI_serial_units (
+ company_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ serial VARCHAR(255) COLLATE utf8mb4_bin NOT NULL,
+ product_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ warehouse_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ document_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL,
+ status VARCHAR(20) NOT NULL, payload JSON NOT NULL,
+ PRIMARY KEY(company_id,serial), FOREIGN KEY(company_id,product_id) REFERENCES SUMI_products(company_id,id),
+ FOREIGN KEY(company_id,warehouse_id) REFERENCES SUMI_warehouses(company_id,id),
+ FOREIGN KEY(company_id,document_id) REFERENCES SUMI_documents(company_id,id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS SUMI_filters (
+ company_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ user_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ scope VARCHAR(30) NOT NULL, payload JSON NOT NULL,
+ PRIMARY KEY(company_id,id), FOREIGN KEY(company_id) REFERENCES SUMI_companies(id), INDEX(company_id,user_id,scope)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS SUMI_payment_reversals (
+ company_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ payment_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ document_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ amount DECIMAL(20,2) NOT NULL, payload JSON NOT NULL,
+ PRIMARY KEY(company_id,id), UNIQUE(company_id,payment_id),
+ FOREIGN KEY(company_id,payment_id) REFERENCES SUMI_payments(company_id,id),
+ FOREIGN KEY(company_id,document_id) REFERENCES SUMI_documents(company_id,id), CHECK(amount>0)
+) ENGINE=InnoDB;

@@ -1,6 +1,7 @@
 import {uid,round} from './domain.mjs';
+import {decimal,sumMoney} from './decimal.mjs';
 export const amounts=['exempt','notSubject','exonerated','generalBase','reducedBase','additionalBase','retained'];
-export function salesRow(record){const r={...record};for(const k of amounts)r[k]=Number(r[k]||0);for(const k of ['generalRate','reducedRate','additionalRate'])r[k]=Number(r[k]||0);for(const group of ['general','reduced','additional'])r[group+'Tax']=round(r[group+'Base']*r[group+'Rate']/100);r.total=round(r.exempt+r.notSubject+r.exonerated+r.generalBase+r.reducedBase+r.additionalBase+r.generalTax+r.reducedTax+r.additionalTax);return r;}
+export function salesRow(record){const r={...record};for(const k of amounts)r[k]=Number(r[k]||0);for(const k of ['generalRate','reducedRate','additionalRate'])r[k]=Number(r[k]||0);for(const group of ['general','reduced','additional'])r[group+'Tax']=round(decimal(r[group+'Base']).times(r[group+'Rate']).div(100));r.total=sumMoney([r.exempt,r.notSubject,r.exonerated,r.generalBase,r.reducedBase,r.additionalBase,r.generalTax,r.reducedTax,r.additionalTax]);return r;}
 export function saveSalesRecord(db,data,id){
  if(!(db.contacts||[]).some(c=>c.id===data.supplier&&['Cliente','Ambos'].includes(c.kind)))throw Error('Seleccioná un cliente.');
  if(!/^\d{4}(0[1-9]|1[0-2])$/.test(data.period||''))throw Error('El período debe tener formato AAAAMM.');

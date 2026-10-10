@@ -2,7 +2,7 @@ import React,{useState} from 'react';
 import SalesBook from './SalesBook.jsx';
 import PurchaseBook from './PurchaseBook.jsx';
 import {fiscalExport} from './fiscal-export.mjs';
-import * as D from './domain.mjs';
+import * as D from './client-domain.mjs';
 export const taxGroups=[{label:'Configurar',items:[['Parámetros','Parámetros'],['Impuestos','Impuestos'],['Proveedor alterno','Proveedor alterno']]},{label:'Clientes',items:[['Libro de ventas','Libro de ventas'],['Retenciones de IVA - Clientes','Retenciones de IVA'],['Retenciones de ISLR - Clientes','Retenciones de ISLR']]},{label:'Proveedores',items:[['Libro de compras','Libro de compras'],['Comprobante de retención IVA','Comprobante de retención IVA'],['Retención de IVA - TXT','Retención de IVA - TXT'],['Retención de ISLR - Abono en cuenta','Retención del ISLR'],['Retención de ISLR - XML','Retención de ISLR - XML']]}];
 const money=(n,c)=>new Intl.NumberFormat('es-VE',{style:'currency',currency:c}).format(n||0);
 export default function Taxes({db,tab='Impuestos',commit,exportRows}){

@@ -1,6 +1,15 @@
+import {moneyRound,documentAmounts,decimal,sumMoney,convertMoney,quantityRound,sumQuantity} from './decimal.mjs';
+export {convertMoney,quantityRound};
+export {closePeriod} from './accounting.mjs';
 export const today = () => new Date().toLocaleDateString('en-CA', {timeZone:'America/Caracas'});
-export const uid = () => crypto.randomUUID();
-export const round = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+let idFactory=()=>crypto.randomUUID();
+export const uid = () => idFactory();
+export function recordIds(fn){const old=idFactory,ids=[];idFactory=()=>{const id=crypto.randomUUID();ids.push(id);return id};try{return {result:fn(),ids}}finally{idFactory=old}}
+export function replayIds(ids,fn){if(!Array.isArray(ids)||ids.length>50000||ids.some(id=>typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id)))throw Error('Identificadores de operación inválidos.');const old=idFactory;let index=0;idFactory=()=>{if(index>=ids.length)throw Error('Faltan identificadores.');return ids[index++]};try{const result=fn();if(index!==ids.length)throw Error('Identificadores sobrantes.');return result}finally{idFactory=old}}
+export const round = moneyRound;
+const serialList=value=>(Array.isArray(value)?value:String(value||'').split(/[\n,;]+/)).map(s=>String(s).trim().toUpperCase()).filter(Boolean);
+function serialSelection(db,product,warehouse,qty,value,status='Disponible'){const serials=serialList(value);if(!Number.isInteger(qty)||serials.length!==qty||new Set(serials).size!==qty)throw Error('Seleccioná un serial distinto por unidad.');for(const serial of serials)if(!(db.serialUnits||[]).some(u=>u.serial===serial&&u.product===product&&u.warehouse===warehouse&&u.status===status))throw Error('Serial no disponible en el depósito: '+serial);return serials}
+export const cashMovements=db=>[...db.payments,...(db.refunds||[]).map(r=>({...r,side:r.side==='sale'?'purchase':'sale',kind:'Reembolso'})),...(db.paymentReversals||[]).map(r=>({...r,side:r.side==='sale'?'purchase':'sale',kind:'Reverso'}))];
 export function saveCompany(db,data){
  const company=Object.fromEntries(['name','rif','address','phone','phone2','email','logo'].map(k=>[k,String(data[k]||'').trim()]));
  company.taxRate=Number(data.taxRate??0);
@@ -13,9 +22,9 @@ export function saveCompany(db,data){
  return {...db,company};
 }
 export const initial = () => ({version:1, contacts:[], products:[], warehouses:[{id:'principal',name:'Principal'}], movements:[], documents:[], payments:[], rate:0});
-export const stock = (db, product, warehouse) => round(db.movements.filter(m=>m.product===product && (!warehouse || m.warehouse===warehouse)).reduce((s,m)=>s+m.qty,0));
-export const reserved = (db,product,warehouse,excludeOrder) => round(db.documents.filter(d=>d.kind==='Pedido'&&d.status==='Confirmado'&&d.reservationActive===true&&d.id!==excludeOrder&&(!warehouse||d.warehouse===warehouse)&&!db.documents.some(i=>i.source===d.id&&i.kind==='Venta'&&i.status==='Confirmado')).reduce((sum,d)=>sum+d.lines.filter(l=>l.product===product).reduce((n,l)=>n+l.qty,0),0));
-export const available = (db,product,warehouse,excludeOrder) => round(stock(db,product,warehouse)-reserved(db,product,warehouse,excludeOrder));
+export const stock = (db, product, warehouse) => sumQuantity(db.movements.filter(m=>m.product===product && (!warehouse || m.warehouse===warehouse)).map(m=>m.qty));
+export const reserved = (db,product,warehouse,excludeOrder) => sumQuantity(db.documents.filter(d=>d.kind==='Pedido'&&d.status==='Confirmado'&&d.reservationActive===true&&d.id!==excludeOrder&&(!warehouse||d.warehouse===warehouse)&&!db.documents.some(i=>i.source===d.id&&i.kind==='Venta'&&i.status==='Confirmado')).flatMap(d=>d.lines.filter(l=>l.product===product).map(l=>l.qty)));
+export const available = (db,product,warehouse,excludeOrder) => quantityRound(decimal(stock(db,product,warehouse)).minus(reserved(db,product,warehouse,excludeOrder)));
 export function reserveOrder(db,id,active=true){
  const order=db.documents.find(d=>d.id===id&&d.kind==='Pedido'&&d.status==='Confirmado');
  if(!order||db.documents.some(d=>d.source===id&&d.kind==='Venta'&&d.status==='Confirmado'))throw Error('Solo se reservan órdenes confirmadas pendientes de facturar.');
@@ -23,15 +32,15 @@ export function reserveOrder(db,id,active=true){
  return {...db,documents:db.documents.map(d=>d.id===id?{...d,reservationActive:active}:d)};
 }
 export function transferStock(db,data){
- const p=db.products.find(p=>p.id===data.product),qty=round(data.qty);
+ const p=db.products.find(p=>p.id===data.product),qty=quantityRound(data.qty);
  if(!p||!db.warehouses.some(w=>w.id===data.from)||!db.warehouses.some(w=>w.id===data.to)||data.from===data.to)throw Error('Seleccioná producto y dos depósitos diferentes.');
- if(p.hasSerial)throw Error('La transferencia por serial requiere trazabilidad de entradas; todavía no está disponible.');
+ const serials=p.hasSerial?serialSelection(db,p.id,data.from,qty,data.serials):[];
  if(!Number.isFinite(qty)||qty<=0||!data.reason?.trim())throw Error('Indicá cantidad positiva y motivo.');
  if(available(db,p.id,data.from)<qty)throw Error('Stock disponible insuficiente en el depósito de origen.');
- const transfer=uid(),common={transfer,product:p.id,date:today(),type:'Transferencia',reason:data.reason.trim()};
- return {...db,movements:[...db.movements,{...common,id:uid(),warehouse:data.from,qty:-qty},{...common,id:uid(),warehouse:data.to,qty}]};
+ const transfer=uid(),common={transfer,product:p.id,date:today(),type:'Transferencia',reason:data.reason.trim(),...(serials.length?{serials}:{})};
+ return {...db,serialUnits:(db.serialUnits||[]).map(u=>serials.includes(u.serial)?{...u,warehouse:data.to,history:[...(u.history||[]),{type:'Transferencia',reference:transfer,from:data.from,to:data.to,date:today()}]}:u),movements:[...db.movements,{...common,id:uid(),warehouse:data.from,qty:-qty},{...common,id:uid(),warehouse:data.to,qty}]};
 }
-export const balance = (db,doc) => round(doc.total+db.documents.filter(d=>d.source===doc.id&&d.status==='Confirmado'&&['Nota de crédito','Nota de débito'].includes(d.kind)).reduce((sum,d)=>sum+(d.kind==='Nota de crédito'?-d.total:d.total),0)-db.payments.filter(p=>p.document===doc.id).reduce((s,p)=>s+p.amount,0));
+export const balance = (db,doc) => sumMoney([doc.total,...db.documents.filter(d=>d.source===doc.id&&d.status==='Confirmado'&&['Nota de crédito','Nota de débito','Devolución de venta','Devolución de compra'].includes(d.kind)).map(d=>d.kind==='Nota de débito'?d.total:-d.total),...db.payments.filter(p=>p.document===doc.id).map(p=>-p.amount),...(db.refunds||[]).filter(r=>r.document===doc.id).map(r=>r.amount),...(db.paymentReversals||[]).filter(r=>r.document===doc.id).map(r=>r.amount)]);
 export function saveContact(db, data) {
  if(!['Cliente','Proveedor','Ambos'].includes(data.kind))throw Error('Tipo de contacto inválido.');
  if(!Number.isSafeInteger(Number(data.days??0))||Number(data.days??0)<0)throw Error('El plazo debe ser un entero no negativo.');
@@ -96,9 +105,9 @@ export function createDocument(db,data) {
  const allowed=data.side==='sale'?['Presupuesto','Pedido','Venta','Nota de entrega']:['Pedido de compra'];
  if(!allowed.includes(data.kind)) throw Error('Tipo de documento inválido.');
  const sequence=Math.max(db.documentSequence||0,0,...db.documents.map(d=>Number(d.number?.split('-').at(-1))||0))+1;
- const subtotal=round(lines.reduce((sum,l)=>sum+round(l.qty*l.price),0));
- const net=round(lines.reduce((sum,l)=>sum+round(l.qty*l.price*(1-l.discount/100)),0));
- const tax=round(lines.reduce((sum,l)=>sum+round(round(l.qty*l.price*(1-l.discount/100))*l.taxRate/100),0));
+ const {subtotal,net,tax}=documentAmounts(lines);
+
+
  const doc={...data,lines,subtotal,discountTotal:round(subtotal-net),taxTotal:tax,id:uid(),number:`${data.side==='sale'?'V':'C'}-${String(sequence).padStart(5,'0')}`,total:round(net+tax),rate:Number(data.rate)||0,status:'Borrador'};
  delete doc.reservationActive;
  return {...db,documentSequence:sequence,documents:[...db.documents,doc]};
@@ -122,7 +131,8 @@ export function confirmDocument(db,id) {
   for(const l of doc.lines) if(available(db,l.product,doc.warehouse,doc.source)<l.qty) throw Error('Stock disponible insuficiente. Revisá existencias y reservas de otras órdenes.');
   movements=doc.lines.map(l=>({id:uid(),product:l.product,warehouse:doc.warehouse,qty:-l.qty,date:doc.date,type:'Venta',reason:doc.number,document:doc.id}));
  }
- return {...db,documents:db.documents.map(d=>d.id===id?{...d,status:'Confirmado'}:d),movements:[...db.movements,...movements]};
+ const sold=doc.kind==='Venta'?doc.lines.flatMap(l=>serialList(l.serials)):[];
+ return {...db,serialUnits:(db.serialUnits||[]).map(u=>sold.includes(u.serial)?{...u,status:'Vendido',document:doc.id,history:[...(u.history||[]),{type:'Venta',reference:doc.id,date:doc.date}]}:u),documents:db.documents.map(d=>d.id===id?{...d,status:'Confirmado'}:d),movements:[...db.movements,...movements]};
 }
 export function convertDocument(db,id,kind) {
  const doc=db.documents.find(d=>d.id===id);
@@ -135,18 +145,19 @@ export function receive(db,id,quantities,data={}) {
  if(!doc||doc.kind!=='Pedido de compra'||doc.status!=='Confirmado') throw Error('Seleccioná un pedido de compra confirmado.');
  const received=doc.received||{}; const lines=[];
  for(const line of doc.lines){
-  const qty=Number(quantities[line.product]||0), pending=round(line.qty-(received[line.product]||0));
+  const qty=Number(quantities[line.product]||0), pending=quantityRound(decimal(line.qty).minus(received[line.product]||0));
   if(!Number.isFinite(qty)||qty<0||qty>pending) throw Error('La recepción supera la cantidad pendiente.');
-  if(qty>0) lines.push({...line,qty});
+  if(qty>0){let serials=[];if(db.products.find(p=>p.id===line.product)?.hasSerial){serials=serialList(data.lines?.find(l=>l.product===line.product)?.serials);if(!Number.isInteger(qty)||serials.length!==qty||new Set(serials).size!==qty||serials.some(s=>(db.serialUnits||[]).some(u=>u.serial===s)||lines.some(l=>(l.serials||[]).includes(s))))throw Error('La recepción requiere un serial nuevo y único por unidad.')}lines.push({...line,qty,serials})}
  }
  if(!lines.length) throw Error('Ingresá al menos una cantidad a recibir.');
- const subtotal=round(lines.reduce((n,l)=>n+round(l.qty*l.price),0));
- const net=round(lines.reduce((n,l)=>n+round(l.qty*l.price*(1-(l.discount||0)/100)),0));
- const taxTotal=round(lines.reduce((n,l)=>n+round(round(l.qty*l.price*(1-(l.discount||0)/100))*(l.taxRate||0)/100),0));
+ const {subtotal,net,tax:taxTotal}=documentAmounts(lines);
+
+
  const receipt={...doc,subtotal,discountTotal:round(subtotal-net),taxTotal,notes:data.notes??doc.notes,id:uid(),source:id,kind:'Recepción',number:`R-${String(Math.max(0,...db.documents.map(d=>Number(d.number?.split('-').at(-1))||0))+1).padStart(5,'0')}`,date:today(),due:doc.due<today()?today():doc.due,lines,total:round(net+taxTotal),received:undefined,status:'Confirmado'};
- const next={...received};for(const l of lines)next[l.product]=round((next[l.product]||0)+l.qty);
+ const next={...received};for(const l of lines)next[l.product]=quantityRound(decimal(next[l.product]||0).plus(l.qty));
  const complete=doc.lines.every(l=>next[l.product]===l.qty);
- return {...db,documents:[...db.documents.map(d=>d.id===id?{...d,received:next,status:complete?'Recibido':'Confirmado'}:d),receipt],movements:[...db.movements,...lines.map(l=>({id:uid(),product:l.product,warehouse:doc.warehouse,qty:l.qty,date:receipt.date,type:'Recepción',reason:receipt.number,document:receipt.id}))]};
+ const units=lines.flatMap(l=>(l.serials||[]).map(serial=>({serial,product:l.product,warehouse:doc.warehouse,status:'Disponible',document:receipt.id,history:[{type:'Recepción',reference:receipt.id,date:receipt.date}]})));
+ return {...db,serialUnits:[...(db.serialUnits||[]),...units],documents:[...db.documents.map(d=>d.id===id?{...d,received:next,status:complete?'Recibido':'Confirmado'}:d),receipt],movements:[...db.movements,...lines.map(l=>({id:uid(),product:l.product,warehouse:doc.warehouse,qty:l.qty,date:receipt.date,type:'Recepción',reason:receipt.number,document:receipt.id}))]};
 }
 export function pay(db,data) {
  const doc=db.documents.find(d=>d.id===data.document);
@@ -169,12 +180,14 @@ export function validateSerials(db,doc){
  for(const line of doc.lines){
   if(!line.hasSerial&&!db.products.find(p=>p.id===line.product)?.hasSerial)continue;
   const serials=line.serials||[];
+  const tracked=(db.serialUnits||[]).some(u=>u.product===line.product);
+  if(tracked&&doc.kind==='Venta')serialSelection(db,line.product,doc.warehouse,line.qty,serials);
   if(!Number.isInteger(line.qty)||serials.length!==line.qty)throw Error('Ingresá un serial por unidad para cada producto con serial. La cantidad debe ser entera.');
   for(const serial of serials){
    const normalized=serial.trim().toUpperCase();
    if(!normalized||seen.has(normalized))throw Error('Los seriales del documento no pueden estar vacíos ni repetidos.');
    seen.add(normalized);
-   if(db.documents.some(d=>d.id!==doc.id&&d.status==='Confirmado'&&d.kind===doc.kind&&d.lines.some(l=>(l.serials||[]).some(s=>s.toUpperCase()===normalized))))throw Error('El serial '+serial+' ya está registrado en otro documento confirmado de este tipo.');
+   if(!tracked&&db.documents.some(d=>d.id!==doc.id&&d.status==='Confirmado'&&d.kind===doc.kind&&d.lines.some(l=>(l.serials||[]).some(s=>s.toUpperCase()===normalized))))throw Error('El serial '+serial+' ya está registrado en otro documento confirmado de este tipo.');
   }
  }
  const source=db.documents.find(d=>d.id===doc.source&&d.kind==='Venta');
@@ -217,3 +230,21 @@ export function createAccountEntry(db,data){
  const doc={id:uid(),number:`${side==='sale'?'CC':'CP'}-${String(sequence).padStart(5,'0')}`,kind:side==='sale'?'Cuenta por cobrar':'Cuenta por pagar',side,contact:contact.id,date:data.date,due:data.due,currency:data.currency,rate,total,subtotal:total,taxTotal:0,status:'Confirmado',manual:true,reference:String(data.reference||'').trim(),notes:data.concept.trim(),lines:[{description:data.concept.trim(),qty:1,price:total}]};
  return {...db,documentSequence:sequence,documents:[...db.documents,doc]};
 }
+
+export function returnGoods(db,id,data){
+ const source=db.documents.find(d=>d.id===id&&d.status==='Confirmado'&&['Venta','Recepción'].includes(d.kind));if(!source)throw Error('Seleccioná una factura o recepción confirmada.');
+ if(!data.reason?.trim()||!data.date||data.date<source.date||data.date>today())throw Error('Indicá motivo y fecha válida para la devolución.');
+ const quantities=data.quantities||{},lines=[];
+ for(const key of Object.keys(quantities))if(!source.lines.some(l=>l.product===key))throw Error('Producto ajeno al documento.');
+ for(let line of source.lines){const qty=quantityRound(quantities[line.product]||0),returned=sumQuantity(db.documents.filter(d=>d.source===id&&d.status==='Confirmado'&&d.kind.startsWith('Devolución')).flatMap(d=>d.lines.filter(l=>l.product===line.product).map(l=>l.qty)));if(!Number.isFinite(qty)||qty<0||qty>quantityRound(decimal(line.qty).minus(returned)))throw Error('La devolución supera las unidades pendientes.');if(qty>0){if(line.hasSerial||db.products.find(p=>p.id===line.product)?.hasSerial){const selected=serialSelection(db,line.product,source.warehouse,qty,data.serials?.[line.product],source.side==='sale'?'Vendido':'Disponible');if(selected.some(s=>!serialList(line.serials).includes(s)||(source.side==='sale'&&(db.serialUnits||[]).find(u=>u.serial===s)?.document!==source.id)))throw Error('El serial no corresponde al documento de origen.');line={...line,serials:selected}}if(source.side==='purchase'&&available(db,line.product,source.warehouse)<qty)throw Error('Stock disponible insuficiente para devolver al proveedor.');lines.push({...line,qty})}}
+ if(!lines.length)throw Error('Ingresá cantidades a devolver.');const amounts=documentAmounts(lines),sequence=Math.max(db.documentSequence||0,...db.documents.map(d=>Number(d.number?.split('-').at(-1))||0))+1;
+ const doc={...source,id:uid(),source:id,kind:source.side==='sale'?'Devolución de venta':'Devolución de compra',number:`DEV-${String(sequence).padStart(5,'0')}`,status:'Confirmado',date:data.date,due:data.date,lines,total:amounts.total,subtotal:amounts.subtotal,taxTotal:amounts.tax,discountTotal:amounts.discountTotal,notes:data.reason.trim()};delete doc.received;delete doc.reservationActive;
+ const movements=lines.map(l=>({id:uid(),product:l.product,warehouse:source.warehouse,document:doc.id,date:doc.date,type:'Devolución',qty:source.side==='sale'?l.qty:-l.qty,reason:doc.number}));
+ const returned=lines.flatMap(l=>serialList(l.serials));return {...db,serialUnits:(db.serialUnits||[]).map(u=>returned.includes(u.serial)?{...u,status:source.side==='sale'?'Disponible':'Devuelto',document:doc.id,history:[...(u.history||[]),{type:doc.kind,reference:doc.id,date:doc.date}]}:u),documentSequence:sequence,documents:[...db.documents,doc],movements:[...db.movements,...movements]};
+}
+export function refund(db,data){const doc=db.documents.find(d=>d.id===data.document&&d.status==='Confirmado');const amount=round(data.amount);if(!doc||balance(db,doc)>=0||!Number.isFinite(amount)||amount<=0||amount>-balance(db,doc))throw Error('El reembolso debe ser positivo y no superar el crédito a favor.');if(!data.account?.trim()||!data.method?.trim()||!data.reference?.trim()||!data.date||data.date<doc.date)throw Error('Indicá cuenta, método, referencia y fecha válidos.');return {...db,refunds:[...(db.refunds||[]),{...data,id:uid(),amount,side:doc.side,currency:doc.currency,rate:doc.rate}]}}
+export function reconcilePayment(db,data){const payment=db.payments.find(p=>p.id===data.payment);if(!payment||!data.reference?.trim()||!data.date||data.date<payment.date)throw Error('Seleccioná un movimiento y una referencia/fecha bancaria válida.');if((db.reconciliations||[]).some(r=>r.payment===payment.id||(r.account===payment.account&&r.reference===data.reference.trim())))throw Error('El movimiento o referencia ya fue conciliado.');if(round(data.amount)!==payment.amount||data.currency!==payment.currency)throw Error('El importe y moneda del extracto no coinciden.');return {...db,reconciliations:[...(db.reconciliations||[]),{id:uid(),payment:payment.id,account:payment.account,reference:data.reference.trim(),date:data.date,amount:payment.amount,currency:payment.currency}]}}
+export function reopenPeriod(db,id,reason){if(!reason?.trim())throw Error('Indicá el motivo de reapertura.');if(!(db.accountClosures||[]).some(c=>c.id===id&&c.status==='Cerrado'))throw Error('Cierre no disponible.');return {...db,accountClosures:db.accountClosures.map(c=>c.id===id?{...c,status:'Reabierto',reopenReason:reason.trim(),reopenedAt:new Date().toISOString()}:c)}}
+export function assertOpenPeriods(before,after){const locked=before.accountClosures||[];for(const key of ['documents','payments','refunds','paymentReversals'])for(const row of after[key]||[]){const old=(before[key]||[]).find(r=>r.id===row.id);if(JSON.stringify(row)!==JSON.stringify(old)&&locked.some(c=>c.status==='Cerrado'&&c.side===row.side&&c.currency===row.currency&&row.date>=c.from&&row.date<=c.to))throw Error('La operación afecta un período cerrado. Reabrilo con un motivo antes de continuar.')}}
+export function saveFilter(db,data,id){if(!data.name?.trim()||!data.owner||!['Inventario','Por cobrar','Por pagar'].includes(data.scope)||!data.values||typeof data.values!=='object'||Array.isArray(data.values))throw Error('Filtro inválido.');const filters=db.savedFilters||[],old=filters.find(f=>f.id===id);if(id&&(!old||old.owner!==data.owner))throw Error('Filtro no disponible.');return {...db,savedFilters:id?filters.map(f=>f.id===id?{...data,id}:f):[...filters,{...data,id:uid()}]}}
+export function reversePayment(db,id,data){const payment=db.payments.find(p=>p.id===id);if(!payment||!data.reason?.trim()||!data.reference?.trim()||!data.date||data.date<payment.date)throw Error('Seleccioná un movimiento y completá fecha, referencia y motivo.');if((db.paymentReversals||[]).some(r=>r.payment===id))throw Error('El movimiento ya fue reversado.');return {...db,paymentReversals:[...(db.paymentReversals||[]),{...payment,id:uid(),payment:id,date:data.date,reference:data.reference.trim(),reason:data.reason.trim()}]}}

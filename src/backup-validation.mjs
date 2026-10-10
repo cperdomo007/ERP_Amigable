@@ -1,3 +1,4 @@
+import {decimal} from './decimal.mjs';
 // Read-only validation: preserve compatible fields and never repair a backup silently.
 export function validateImport(db) {
  const fail=(path,message)=>{throw Error(`Respaldo inválido (${path}): ${message}.`)};
@@ -10,8 +11,8 @@ export function validateImport(db) {
  object(db,'base');if(db.version!==1)fail('version','versión no compatible');number(db.rate,'rate');
  const inspect=(value,path)=>{if(typeof value==='number'&&!Number.isFinite(value))fail(path,'número no finito');if(value&&typeof value==='object')for(const [key,child] of Object.entries(value))inspect(child,path+'.'+key)};inspect(db,'base');
  const maps={};
- for(const key of ['contacts','products','warehouses','movements','documents','payments','roles','users','taxes','taxRetentions']){
-  if(db[key]===undefined&&['roles','users','taxes','taxRetentions'].includes(key)){maps[key]=new Map();continue}
+ for(const key of ['contacts','products','warehouses','movements','documents','payments','roles','users','taxes','taxRetentions','refunds','reconciliations','accountClosures','savedFilters','paymentReversals']){
+  if(db[key]===undefined&&['roles','users','taxes','taxRetentions','refunds','reconciliations','accountClosures','savedFilters','paymentReversals'].includes(key)){maps[key]=new Map();continue}
   if(!Array.isArray(db[key]))fail(key,'se esperaba una lista');
   const map=new Map();db[key].forEach((row,i)=>{const p=`${key}[${i}]`;object(row,p);text(row.id,p+'.id');if(map.has(row.id))fail(p+'.id','identificador duplicado');map.set(row.id,row)});maps[key]=map;
  }
@@ -20,7 +21,7 @@ export function validateImport(db) {
  unique(db.contacts,'rif','contacts');unique(db.products,'sku','products');
  for(const p of maps.products.values()){text(p.name,'products.name');text(p.unit,'products.unit');choice(p.currency,'products.currency',['USD','VES']);for(const k of ['cost','price','minimum'])number(p[k],'products.'+k)}
  for(const w of maps.warehouses.values())text(w.name,'warehouses.name');
- const kinds={sale:['Presupuesto','Pedido','Venta','Nota de entrega','Nota de crédito','Nota de débito','Cuenta por cobrar'],purchase:['Pedido de compra','Recepción','Cuenta por pagar']};
+ const kinds={sale:['Presupuesto','Pedido','Venta','Nota de entrega','Nota de crédito','Nota de débito','Cuenta por cobrar','Devolución de venta'],purchase:['Pedido de compra','Recepción','Cuenta por pagar','Devolución de compra']};
  for(const d of maps.documents.values()){
   const p=`documents.${d.id}`;choice(d.side,p+'.side',['sale','purchase']);choice(d.kind,p+'.kind',kinds[d.side]);choice(d.status,p+'.status',d.kind==='Pedido de compra'?['Borrador','Confirmado','Recibido']:['Borrador','Confirmado']);
   text(d.number,p+'.number');const c=ref('contacts',d.contact,p+'.contact');if(!['Ambos',d.side==='sale'?'Cliente':'Proveedor'].includes(c.kind))fail(p+'.contact','tipo de contacto incompatible');
@@ -34,7 +35,7 @@ export function validateImport(db) {
    if(l.serials!==undefined&&(!Array.isArray(l.serials)||l.serials.some(s=>typeof s!=='string'||!s.trim())))fail(p+'.serials','lista de seriales inválida');
   }
   for(const k of ['subtotal','discountTotal','taxTotal'])if(d[k]!==undefined)number(d[k],p+'.'+k);
-  if(d.source!==undefined){const source=ref('documents',d.source,p+'.source');const expected={'Pedido':'Presupuesto','Venta':'Pedido','Nota de entrega':'Venta','Recepción':'Pedido de compra','Nota de crédito':'Venta','Nota de débito':'Venta'}[d.kind];if(source.id===d.id||source.side!==d.side||source.contact!==d.contact||source.currency!==d.currency||(expected&&source.kind!==expected))fail(p+'.source','origen incompatible')}
+  if(d.source!==undefined){const source=ref('documents',d.source,p+'.source');const expected={'Pedido':'Presupuesto','Venta':'Pedido','Nota de entrega':'Venta','Recepción':'Pedido de compra','Nota de crédito':'Venta','Nota de débito':'Venta','Devolución de venta':'Venta','Devolución de compra':'Recepción'}[d.kind];if(source.id===d.id||source.side!==d.side||source.contact!==d.contact||source.currency!==d.currency||(expected&&source.kind!==expected))fail(p+'.source','origen incompatible')}
   if(d.order!==undefined)ref('documents',d.order,p+'.order');
   if(d.reservationActive!==undefined&&(typeof d.reservationActive!=='boolean'||(d.reservationActive&&d.kind!=='Pedido')))fail(p+'.reservationActive','reserva inválida');
   if(d.received!==undefined){object(d.received,p+'.received');for(const [id,qty] of Object.entries(d.received)){const line=d.lines.find(l=>l.product===id);if(!line)fail(p+'.received','producto ajeno al pedido');number(qty,p+'.received',0,line.qty)}}
@@ -42,9 +43,15 @@ export function validateImport(db) {
  unique(db.documents,'number','documents');
  for(const d of maps.documents.values()){const seen=new Set([d.id]);let node=d;while(node.source!==undefined){if(seen.has(node.source))fail('documents.source','ciclo de documentos');seen.add(node.source);node=maps.documents.get(node.source)}}
  const transfers=new Map();
- for(const m of maps.movements.values()){ref('products',m.product,'movements.product');ref('warehouses',m.warehouse,'movements.warehouse');number(m.qty,'movements.qty',-Infinity);if(m.qty===0)fail('movements.qty','cantidad cero');date(m.date,'movements.date');choice(m.type,'movements.type',['Ajuste','Venta','Recepción','Transferencia']);if(m.document!==undefined)ref('documents',m.document,'movements.document');if(m.type==='Transferencia'){text(m.transfer,'movements.transfer');text(m.reason,'movements.reason');transfers.set(m.transfer,[...(transfers.get(m.transfer)||[]),m])}}
+ for(const m of maps.movements.values()){ref('products',m.product,'movements.product');ref('warehouses',m.warehouse,'movements.warehouse');number(m.qty,'movements.qty',-Infinity);if(m.qty===0)fail('movements.qty','cantidad cero');date(m.date,'movements.date');choice(m.type,'movements.type',['Ajuste','Venta','Recepción','Transferencia','Devolución']);if(m.document!==undefined)ref('documents',m.document,'movements.document');if(m.type==='Transferencia'){text(m.transfer,'movements.transfer');text(m.reason,'movements.reason');transfers.set(m.transfer,[...(transfers.get(m.transfer)||[]),m])}}
  for(const rows of transfers.values()){if(rows.length!==2||rows[0].qty!==-rows[1].qty||rows[0].warehouse===rows[1].warehouse||rows[0].product!==rows[1].product||rows[0].date!==rows[1].date||rows[0].reason!==rows[1].reason)fail('movements.transfer','transferencia incompleta o desbalanceada')}
  for(const p of maps.payments.values()){const d=ref('documents',p.document,'payments.document');if(d.status!=='Confirmado'||!['Venta','Recepción','Cuenta por cobrar','Cuenta por pagar'].includes(d.kind))fail('payments.document','documento no admite pagos');number(p.amount,'payments.amount',Number.MIN_VALUE);number(p.rate,'payments.rate');if(p.currency!==d.currency||p.side!==d.side)fail('payments','moneda o tipo incompatible');text(p.account,'payments.account');text(p.method,'payments.method');date(p.date,'payments.date');if(p.date<d.date)fail('payments.date','pago anterior a emisión')}
+ for(const r of maps.refunds.values()){const d=ref('documents',r.document,'refunds.document');number(r.amount,'refunds.amount',Number.MIN_VALUE);date(r.date,'refunds.date');text(r.account,'refunds.account');text(r.method,'refunds.method');text(r.reference,'refunds.reference');if(r.currency!==d.currency||r.side!==d.side)fail('refunds','documento incompatible')}
+ for(const r of maps.reconciliations.values()){const p=ref('payments',r.payment,'reconciliations.payment');text(r.reference,'reconciliations.reference');date(r.date,'reconciliations.date');if(r.amount!==p.amount||r.currency!==p.currency||r.account!==p.account)fail('reconciliations','importe, cuenta o moneda incompatibles')}
+ unique(db.reconciliations||[],'payment','reconciliations'); for(const r of maps.paymentReversals.values()){const p=ref('payments',r.payment,'paymentReversals.payment');if(r.document!==p.document||r.amount!==p.amount||r.currency!==p.currency||r.side!==p.side)fail('paymentReversals','movimiento incompatible');date(r.date,'paymentReversals.date');text(r.reason,'paymentReversals.reason');text(r.reference,'paymentReversals.reference')} unique(db.paymentReversals||[],'payment','paymentReversals');
+ for(const c of maps.accountClosures.values()){date(c.from,'accountClosures.from');date(c.to,'accountClosures.to');if(c.from>c.to)fail('accountClosures','período invertido');choice(c.side,'accountClosures.side',['sale','purchase']);choice(c.currency,'accountClosures.currency',['USD','VES']);choice(c.status,'accountClosures.status',['Cerrado','Reabierto']);object(c.totals,'accountClosures.totals');for(const k of ['total','paid','balance'])number(c.totals[k],'accountClosures.totals.'+k,-Infinity)}
+ for(const f of maps.savedFilters.values()){text(f.name,'savedFilters.name');text(f.owner,'savedFilters.owner');choice(f.scope,'savedFilters.scope',['Inventario','Por cobrar','Por pagar']);object(f.values,'savedFilters.values')}
+ if(db.serialUnits!==undefined){if(!Array.isArray(db.serialUnits))fail('serialUnits','lista obligatoria');unique(db.serialUnits,'serial','serialUnits');for(const u of db.serialUnits){object(u,'serialUnits');ref('products',u.product,'serialUnits.product');ref('warehouses',u.warehouse,'serialUnits.warehouse');if(u.document!==undefined)ref('documents',u.document,'serialUnits.document');choice(u.status,'serialUnits.status',['Disponible','Vendido','Devuelto']);if(!Array.isArray(u.history))fail('serialUnits.history','historial obligatorio')}}
  if(db.company!==undefined){object(db.company,'company');text(db.company.name,'company.name');text(db.company.rif,'company.rif');if(db.company.taxRate!==undefined)number(db.company.taxRate,'company.taxRate',0,100)}
  for(const r of maps.roles.values()){text(r.name,'roles.name');object(r.permissions,'roles.permissions');for(const permissions of Object.values(r.permissions)){object(permissions,'roles.permissions');for(const value of Object.values(permissions))if(typeof value!=='boolean')fail('roles.permissions','permiso no booleano')}}
  unique(db.roles||[],'name','roles');unique(db.users||[],'username','users');unique(db.users||[],'email','users');
@@ -55,5 +62,12 @@ export function validateImport(db) {
  if(db.taxSettings!==undefined){object(db.taxSettings,'taxSettings');if(db.taxSettings.alternateSupplier){const c=ref('contacts',db.taxSettings.alternateSupplier,'taxSettings.alternateSupplier');if(!['Proveedor','Ambos'].includes(c.kind))fail('taxSettings.alternateSupplier','contacto no proveedor')}}
  if(db.taxControls!==undefined){object(db.taxControls,'taxControls');const seen=new Set();for(const [id,value] of Object.entries(db.taxControls)){ref('documents',id,'taxControls');text(value,'taxControls');if(seen.has(value))fail('taxControls','control duplicado');seen.add(value)}}
  for(const k of ['documentSequence','taxRetentionSequence'])if(db[k]!==undefined){number(db[k],k);if(!Number.isSafeInteger(db[k]))fail(k,'secuencia no entera')}
+ const exact=(value,path,places,limit)=>{if(!Number.isFinite(value)||decimal(value).decimalPlaces()>places||decimal(value).abs().gt(limit))fail(path,'valor fuera de la precisión o rango admitidos')};
+ for(const p of db.products){for(const k of ['price','cost'])exact(p[k],'products.'+k,2,'1000000000000');exact(p.minimum,'products.minimum',6,'1000000000')}
+ exact(db.rate,'rate',8,'1000000');
+ for(const d of db.documents){exact(d.total,'documents.total',2,'1000000000000');exact(d.rate,'documents.rate',8,'1000000');for(const l of d.lines){exact(l.qty,'documents.qty',6,'1000000000');exact(l.price,'documents.price',2,'1000000000000')}}
+ for(const p of [...db.payments,...(db.refunds||[]),...(db.paymentReversals||[])]){exact(p.amount,'cash.amount',2,'1000000000000');exact(p.rate,'cash.rate',8,'1000000')}
+ for(const m of db.movements)exact(m.qty,'movements.qty',6,'1000000000');
+ for(const u of db.users||[])if(['password','password_hash','passwordHash'].some(k=>k in u))fail('users','las credenciales deben administrarse aparte del respaldo');
  return db;
 }

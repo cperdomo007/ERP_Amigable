@@ -1,14 +1,10 @@
-import {initial,validateImport} from './domain.mjs';
-const KEY='erp-amigable-v1';
-async function request(path,body){
+export const authEvents=typeof BroadcastChannel!=='undefined'?new BroadcastChannel('sumi-auth'):null;
+authEvents?.unref?.();
+export async function apiRequest(path,body){
  const response=await fetch('/api/erp/'+path,{method:body?'POST':'GET',headers:{'X-ERP-Client':'desktop',...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(60000)});
- const result=await response.json();if(!response.ok){const error=new Error(result.error||'No se pudo conectar con MySQL.');error.status=response.status;throw error}return result;
+ const result=await response.json();if(!response.ok){const error=new Error(result.error||'No se pudo conectar con MySQL.');error.status=response.status;error.code=result.code;throw error}return result;
 }
-export async function loadDatabase(){
- try{return await request('state')}catch(e){if(e.status!==404)throw e}
- const raw=localStorage.getItem(KEY);let db;
- try{db=raw===null?initial():validateImport(JSON.parse(raw))}catch{throw Error('Los datos locales no son válidos. Se conservaron sin reemplazarlos; recuperá un respaldo antes de migrar.')}
- // The original localStorage copy stays untouched, including after a successful migration.
- return request('bootstrap',{db});
-}
-export async function saveDatabase(db,revision,requestKey){return request('state',{db:validateImport(db),revision,requestKey})}
+export const loadDatabase=()=>apiRequest('state');
+export const loginDatabase=async data=>{const result=await apiRequest('auth/login',data);authEvents?.postMessage({type:'changed'});return result};
+export const logoutDatabase=async()=>{const result=await apiRequest('auth/logout',{});authEvents?.postMessage({type:'changed'});return result};
+export const saveDatabase=(payload,revision,requestKey)=>apiRequest('commands',{...payload,revision,requestKey});

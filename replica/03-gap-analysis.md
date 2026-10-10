@@ -41,23 +41,8 @@ V2: implementar 7–9 según reconocimiento autenticado y prioridades de negocio
 
 V3: implementar 10 y medir uso, tiempos operativos y errores. IA de consulta con datos mínimos, manejo de indisponibilidad y respuestas contrastadas; cualquier automatización de cambios requerirá reglas y autorizaciones específicas.
 
-## Estado verificado al 10 de octubre de 2026
+## Estado actual
 
-MySQL local conectado a ERP_AmigableDB. Todas las tablas propias se definen con prefijo SUMI_; en Windows MySQL las presenta en minúsculas. Interfaz y API local operativas. Migración inicial ejecutada conservando la copia del navegador. No existe actualmente un bloqueo de credenciales.
+Las diez mejoras tienen implementación funcional local, con evidencia y límites en [12-roadmap-implemented.md](12-roadmap-implemented.md). Login, permisos y comandos comerciales de servidor ya funcionan. MySQL tiene 22 tablas SUMI_. La validación final aprobó 67 pruebas, incluidas las de MySQL real y dos usuarios concurrentes; compilación exitosa.
 
-| # | Estado | Evidencia y trabajo restante |
-|---|---|---|
-| 1 | Implementado para uso local | API de instantáneas, persistencia MySQL, transacciones y migración. Pendiente API de comandos comerciales autorizados. |
-| 2 | Pendiente | Sin login ni permisos efectivos; acceso del propietario local. El esquema separa empresas, pero no acredita aislamiento entre usuarios autenticados. |
-| 3 | Parcial | Revisión, bloqueo de empresa e idempotencia probados en MySQL. Pendiente validación de comandos de stock/cobros en servidor y pruebas con roles reales. |
-| 4 | Implementado con límite | Respaldo previo por escritura y restauración comprobada. Copias dentro de la misma base; pendiente respaldo externo y política de retención. |
-| 5 | Parcial | Columnas SQL DECIMAL; cálculos de dominio todavía con Number. Política decimal integral pendiente. |
-| 6 | Parcial | Auditoría de guardados y respaldos previos. Pendiente identidad del usuario, detalle por operación y correcciones comerciales trazables. |
-| 7 | Parcial | Reservas y transferencias operativas. Pendientes devoluciones y trazabilidad completa por serial. |
-| 8 | Pendiente | Diario y saldos disponibles; conciliación y cierre de cuentas no implementados. |
-| 9 | Parcial | Búsquedas existentes. Pendientes filtros guardados y validación completa de móvil. |
-| 10 | Parcial | Panel de vencimientos/stock y puente Gemini de consulta. Pendientes notificaciones, reposición automatizada y verificación real de IA. |
-
-Validación ejecutada: 56 pruebas aprobadas, incluida integración MySQL real con concurrencia, idempotencia, documentos/pagos, restauración y rollback. Compilación exitosa. Evidencia y límites en `replica/11-mysql-connected.md`.
-
-El MVP completo todavía no cumple el criterio de dos usuarios autenticados con permisos diferentes. La siguiente dependencia es login y autorización de servidor, seguida de comandos comerciales y cálculo decimal. El reconocimiento autenticado de Odoo permanece pendiente.
+Gemini opcional está preparado, sin ejecución real por falta de clave. Las consultas verificadas funcionan localmente. Copias en otro equipo/disco, certificación fiscal, pruebas amplias de carga/dispositivos y reconstrucción de seriales históricos sin datos no se declaran completadas.

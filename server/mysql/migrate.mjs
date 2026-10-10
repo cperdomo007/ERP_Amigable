@@ -7,5 +7,7 @@ try{
  for(const statement of sql.split(';').map(s=>s.trim()).filter(Boolean))await pool.query(statement);
  await pool.execute('INSERT IGNORE INTO SUMI_migrations(version) VALUES (?)',['001-initial']);
  await pool.execute('INSERT IGNORE INTO SUMI_migrations(version) VALUES (?)',['002-automatic-backups']);
+ await pool.execute('INSERT IGNORE INTO SUMI_migrations(version) VALUES (?)',['003-authentication']);
+ await pool.execute('INSERT IGNORE INTO SUMI_migrations(version) VALUES (?)',['004-business-controls']);
  console.log('Esquema SUMI_ preparado. No se modificaron registros existentes.');
 }catch(error){console.error('Migración no completada:',error.code||error.message);process.exitCode=1}finally{await pool.end()}

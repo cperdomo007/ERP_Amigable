@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "api": "node server/api.mjs",
+    "api": "node server/run-api.mjs",
+    "init:admin": "node server/init-admin.mjs",
     "db:migrate": "node server/mysql/migrate.mjs",
     "db:import": "node server/mysql/import-backup.mjs",
     "db:export": "node server/mysql/export-backup.mjs",
@@ -23,6 +24,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "decimal.js": "^10.6.0",
     "exceljs": "^4.4.0",
     "lucide-react": "^1.52.0",
     "mysql2": "^3.24.5",

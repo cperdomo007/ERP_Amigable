@@ -1,0 +1,14 @@
+import {balance,today,uid} from './domain.mjs';
+import {sumMoney,decimal,moneyRound} from './decimal.mjs';
+export function closePeriod(db,data){
+ const validDate=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v+'T12:00:00Z'))&&new Date(v+'T12:00:00Z').toISOString().slice(0,10)===v;
+ if(!['sale','purchase'].includes(data.side)||!['USD','VES'].includes(data.currency)||!validDate(data.from)||!validDate(data.to)||data.from>data.to||data.to>today())throw Error('Seleccioná tipo, moneda y período válidos.');
+ const closures=db.accountClosures||[];if(closures.some(c=>c.status==='Cerrado'&&c.side===data.side&&c.currency===data.currency&&data.from<=c.to&&data.to>=c.from))throw Error('El período se superpone a un cierre existente.');
+ const matches=r=>r.side===data.side&&r.currency===data.currency,inPeriod=r=>matches(r)&&r.date>=data.from&&r.date<=data.to,payments=db.payments.filter(inPeriod),refunds=(db.refunds||[]).filter(inPeriod),reversals=(db.paymentReversals||[]).filter(inPeriod),reversed=new Set((db.paymentReversals||[]).filter(r=>r.date<=data.to).map(r=>r.payment));
+ if(payments.some(p=>!reversed.has(p.id)&&!(db.reconciliations||[]).some(r=>r.payment===p.id)))throw Error('Conciliá los movimientos del período antes de cerrar.');
+ const history=(cutoff,inclusive)=>{const include=r=>inclusive?r.date<=cutoff:r.date<cutoff;return {...db,documents:db.documents.filter(include),payments:db.payments.filter(include),refunds:(db.refunds||[]).filter(include),paymentReversals:(db.paymentReversals||[]).filter(include)}};
+ const isAccount=d=>matches(d)&&d.status==='Confirmado'&&['Venta','Recepción','Cuenta por cobrar','Cuenta por pagar'].includes(d.kind),opening=history(data.from,false),ending=history(data.to,true),accounts=ending.documents.filter(isAccount),periodDocs=accounts.filter(d=>d.date>=data.from);
+ const openingBalance=sumMoney(opening.documents.filter(isAccount).map(d=>balance(opening,d))),closingBalance=sumMoney(accounts.map(d=>balance(ending,d))),total=sumMoney(periodDocs.map(d=>d.total)),paid=sumMoney([...payments.map(p=>p.amount),...refunds.map(r=>-r.amount),...reversals.map(r=>-r.amount)]),adjustments=sumMoney(ending.documents.filter(d=>inPeriod(d)&&d.status==='Confirmado'&&['Nota de crédito','Nota de débito','Devolución de venta','Devolución de compra'].includes(d.kind)).map(d=>d.kind==='Nota de débito'?d.total:-d.total));
+ if(moneyRound(decimal(openingBalance).plus(total).plus(adjustments).minus(paid))!==closingBalance)throw Error('El cierre no concilia con los documentos vinculados.');
+ return {...db,accountClosures:[...closures,{...data,id:uid(),status:'Cerrado',createdAt:new Date().toISOString(),totals:{openingBalance,total,adjustments,paid,balance:closingBalance},documents:accounts.map(d=>d.id),payments:payments.map(p=>p.id),refunds:refunds.map(r=>r.id),reversals:reversals.map(r=>r.id)}]};
+}

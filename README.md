@@ -20,27 +20,27 @@ En Clientes y proveedores: Exportar clientes descarga un .xlsx con todos los con
 
 ## Límites explícitos
 
-Esta versión guarda en MySQL mediante una API local en 127.0.0.1:3002. La interfaz usa 127.0.0.1:5173. La primera carga migra la copia local del navegador si la empresa no existe, sin borrar esa copia. Cada escritura usa transacción, revisión e idempotencia; una sesión desactualizada recibe un conflicto y debe recargarse. Todavía no incluye autenticación ni permisos efectivos por usuario; solo acceso desde el equipo local. No se considera lista para producción.
+Esta versión guarda en MySQL mediante una API local en 127.0.0.1:3002. La interfaz usa 127.0.0.1:5173. La importación local se valida y se ejecuta mediante los comandos de migración documentados. Cada escritura usa transacción, revisión e idempotencia; una sesión desactualizada recibe un conflicto y debe recargarse. Incluye login y permisos de servidor por empresa; continúa limitado al equipo local. No se considera lista para producción.
 
-El asistente consulta Gemini mediante `server/ai.mjs`. Configurar `GEMINI_API_KEY` y, opcionalmente, `GEMINI_MODEL` en `.env`, usando `.env.example` como referencia, y ejecutar `npm run ai` además de `npm run dev`. Escucha en 127.0.0.1:3001 y permite el frontend de 127.0.0.1:5173. Envía preguntas, historial reciente y un resumen del negocio al proveedor. Una respuesta real requiere credenciales válidas y no se verifica con las pruebas locales. Las claves privadas nunca deben estar en React.
+El asistente usa la API autenticada para mostrar cifras verificadas de MySQL. Gemini es opcional, requiere GEMINI_API_KEY y consentimiento explícito en la interfaz. Recibe la pregunta y un resumen mínimo; su comentario se muestra separado de los resultados calculados.
 
-Los documentos calculan descuentos e IVA. Existen libros de compras/ventas, retenciones internas y exportación TXT IVA/XML ISLR con validación estructural; aceptación tributaria pendiente de comprobar. Se pueden editar clientes/proveedores y productos, gestionar seriales en venta/entrega y generar notas comerciales de crédito/débito. Las recepciones generan deuda interna; factura del proveedor separada pendiente. No incluye emisión fiscal certificada, contabilidad completa, devoluciones ni reversos. Cobros/pagos son registros internos. Operaciones en la moneda del documento; pagos cruzados pendientes.
+Los documentos calculan descuentos e IVA. Existen libros de compras/ventas, retenciones internas y exportación TXT IVA/XML ISLR con validación estructural; aceptación tributaria pendiente de comprobar. Se pueden editar clientes/proveedores y productos, gestionar seriales en venta/entrega y generar notas comerciales de crédito/débito. Las recepciones generan deuda interna; factura del proveedor separada pendiente. Incluye devoluciones y reversos trazables; quedan fuera la emisión fiscal certificada y la contabilidad completa. Cobros/pagos son registros internos. Operaciones en la moneda del documento; pagos cruzados pendientes.
 
 ## Inventario: disponibilidad y transferencias
 
 En Productos y stock se consulta stock físico, reservado y disponible por depósito. Las órdenes confirmadas pendientes de facturar permiten reservar todas sus cantidades o liberar la reserva. Reservar no mueve existencias. Una factura confirmada consume la reserva de su propia orden y descuenta stock; otras facturas, ajustes negativos y transferencias respetan las reservas. Liberar la reserva permite editar la orden nuevamente. Los pedidos existentes comienzan sin reserva y se reservan manualmente.
 
-Transferir entre depósitos registra una salida y una entrada vinculadas en una sola escritura local, sin cambiar el stock total. Requiere cantidad positiva, motivo y depósitos diferentes. Productos con serial todavía no admiten transferencia hasta incorporar trazabilidad de entradas. El respaldo verifica que cada transferencia tenga sus dos movimientos balanceados. Estas operaciones se guardan en una transacción MySQL con control de revisión. Las pestañas desactualizadas deben recargar; no hay acceso efectivo por usuario todavía.
+Transferir entre depósitos registra una salida y una entrada vinculadas en una sola escritura local, sin cambiar el stock total. Requiere cantidad positiva, motivo y depósitos diferentes. Las transferencias de productos con serial requieren unidades registradas desde la recepción. El respaldo verifica que cada transferencia tenga sus dos movimientos balanceados. Estas operaciones se guardan en una transacción MySQL con control de revisión. Las pestañas desactualizadas deben recargar; el acceso se comprueba por usuario y empresa.
 
 ## Validación del respaldo
 
 En Configuración → Respaldos, el JSON versión 1 se valida antes de abrir la confirmación de reemplazo: identificadores, referencias, tipos, estados, cantidades e importes finitos, fechas, usuarios/roles y estructuras fiscales opcionales. Un error identifica el campo y evita importar. Los campos adicionales compatibles se conservan sin transformar IDs ni saldos. Campos fiscales de exportación pueden estar vacíos mientras el registro está en preparación; se validan al exportar.
 
-La validación estructural no certifica conciliación contable ni cumplimiento fiscal. Descargar una copia antes de confirmar el reemplazo. Los roles locales todavía no habilitan autenticación ni permisos efectivos.
+La validación estructural no certifica conciliación contable ni cumplimiento fiscal. Descargar una copia antes de confirmar el reemplazo. Los roles se verifican en el servidor. Las credenciales se administran aparte y no se sustituyen al restaurar datos comerciales.
 
 ## Render
 
-El archivo render.yaml permite alojar esta demo como sitio estático: build `npm ci && npm run build`, carpeta `dist`. El sitio público mostrará una demo vacía; los datos quedan en el navegador del visitante. El sitio estático por sí solo no despliega la API MySQL local; se requiere adaptar el alojamiento antes de publicar esta versión conectada.
+El archivo render.yaml permite alojar esta demo como sitio estático: build `npm ci && npm run build`, carpeta `dist`. La interfaz requiere una API autenticada conectada a MySQL para operar. El sitio estático por sí solo no despliega la API MySQL local; se requiere adaptar el alojamiento antes de publicar esta versión conectada.
 
 ## Siguiente etapa para producción
 
@@ -48,4 +48,12 @@ El archivo render.yaml permite alojar esta demo como sitio estático: build `npm
 
 La base seleccionada es `ERP_AmigableDB`; todas las tablas llevan prefijo `SUMI_`. El esquema y comandos de migración, importación y exportación están en `server/mysql`. Consultar `server/mysql/README.md` antes de ejecutarlos. La interfaz ya lee y guarda mediante la API MySQL. Ejecutar `npm run api` además de `npm run dev`. Configurar credenciales únicamente en `.env`.
 
-Completar autenticación y permisos de servidor, cálculo decimal integral, auditoría por usuario, escalabilidad y requisitos fiscales. MySQL, guardado transaccional, revisión, idempotencia y respaldos automáticos por operación ya están conectados. La API actual guarda instantáneas validadas de una empresa local; no sustituye una API de operaciones de negocio autorizadas.
+Autenticación, permisos de servidor, cálculo decimal, auditoría, comandos de negocio y respaldos locales están implementados. Para producción quedan alojamiento seguro, respaldos externos, escalabilidad y requisitos fiscales.
+
+## Acceso y mejoras actuales
+
+Administrador local: admin; empresa: empresa-local. Acceso inicial en work/ERP-admin-access.txt, excluido de Git. Ejecutar npm run api y npm run dev. Usuarios/roles/contraseñas se administran en Configuración; los permisos se comprueban en servidor.
+
+Devoluciones en Ventas/Compras. Conciliación, cierres, reembolsos y reversos en Caja y cuentas. Auditoría en Configuración. Filtros personales en Inventario y diarios. Trazabilidad de seriales desde recepción. Alertas y asistente con cifras verificadas desde MySQL. Gemini opcional requiere clave y selección explícita para enviar pregunta/resumen a Google.
+
+La descripción vigente, política decimal, pruebas y límites están en replica/12-roadmap-implemented.md. Informes anteriores documentan el estado histórico, no capacidades actuales.

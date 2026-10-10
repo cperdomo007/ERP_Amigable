@@ -1,0 +1,3 @@
+import React,{useState,useEffect} from 'react';
+import {apiRequest} from './persistence.mjs';
+export default function AuditHistory(){const [rows,setRows]=useState([]),[error,setError]=useState('');useEffect(()=>{apiRequest('audit').then(setRows).catch(e=>setError(e.message))},[]);return <section className="card"><h3>Historial de operaciones</h3>{error&&<p role="alert">{error}</p>}<div className="table-wrap"><table><thead><tr><th>Fecha</th><th>Usuario</th><th>Operación</th><th>Detalle</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td>{new Date(r.created_at).toLocaleString('es-VE')}</td><td>{r.actor}</td><td>{r.action}</td><td>{JSON.stringify(r.details)}</td></tr>)}</tbody></table></div></section>}
