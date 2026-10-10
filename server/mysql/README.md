@@ -11,6 +11,6 @@ Estado actualizado: esquema aplicado y conexión real verificada. La API local g
 
 Las columnas monetarias SQL usan DECIMAL y el driver devuelve decimales como texto. El dominio actual sigue calculando con Number: la política decimal integral y su regresión están pendientes. Los payload JSON preservan datos originales de migración; una futura API deberá mantenerlos coherentes con las columnas normalizadas.
 
-Pendiente del 03-gap: API autorizada por empresa, credenciales de usuarios, permisos, bloqueo transaccional de stock/cobros, idempotencia, trabajos de respaldo automático y recuperación, auditoría operacional, devoluciones, conciliación/cierre, filtros guardados y alertas. Reservas y transferencias ya existen en la versión local previa; no constituyen todavía operaciones multiusuario.
+Pendiente del 03-gap: API de comandos autorizados por empresa, credenciales de usuarios, permisos, cálculo decimal integral, auditoría operacional por usuario, devoluciones, conciliación/cierre, filtros guardados y notificaciones. El guardado de instantáneas ya tiene bloqueo transaccional, revisión, idempotencia, respaldo automático y restauración comprobada. Faltan copias externas y retención. Reservas y transferencias operan con persistencia MySQL, pero todavía no constituyen un circuito multiusuario con roles efectivos.
 
 Referencia: [MySQL InnoDB](https://dev.mysql.com/doc/refman/8.4/en/innodb-best-practices.html) y [claves foráneas](https://dev.mysql.com/doc/refman/8.4/en/create-table-foreign-keys.html).
