@@ -14,6 +14,23 @@ export function saveCompany(db,data){
 }
 export const initial = () => ({version:1, contacts:[], products:[], warehouses:[{id:'principal',name:'Principal'}], movements:[], documents:[], payments:[], rate:0});
 export const stock = (db, product, warehouse) => round(db.movements.filter(m=>m.product===product && (!warehouse || m.warehouse===warehouse)).reduce((s,m)=>s+m.qty,0));
+export const reserved = (db,product,warehouse,excludeOrder) => round(db.documents.filter(d=>d.kind==='Pedido'&&d.status==='Confirmado'&&d.reservationActive===true&&d.id!==excludeOrder&&(!warehouse||d.warehouse===warehouse)&&!db.documents.some(i=>i.source===d.id&&i.kind==='Venta'&&i.status==='Confirmado')).reduce((sum,d)=>sum+d.lines.filter(l=>l.product===product).reduce((n,l)=>n+l.qty,0),0));
+export const available = (db,product,warehouse,excludeOrder) => round(stock(db,product,warehouse)-reserved(db,product,warehouse,excludeOrder));
+export function reserveOrder(db,id,active=true){
+ const order=db.documents.find(d=>d.id===id&&d.kind==='Pedido'&&d.status==='Confirmado');
+ if(!order||db.documents.some(d=>d.source===id&&d.kind==='Venta'&&d.status==='Confirmado'))throw Error('Solo se reservan órdenes confirmadas pendientes de facturar.');
+ if(active)for(const l of order.lines)if(available(db,l.product,order.warehouse,id)<l.qty)throw Error('Stock disponible insuficiente para reservar toda la orden.');
+ return {...db,documents:db.documents.map(d=>d.id===id?{...d,reservationActive:active}:d)};
+}
+export function transferStock(db,data){
+ const p=db.products.find(p=>p.id===data.product),qty=round(data.qty);
+ if(!p||!db.warehouses.some(w=>w.id===data.from)||!db.warehouses.some(w=>w.id===data.to)||data.from===data.to)throw Error('Seleccioná producto y dos depósitos diferentes.');
+ if(p.hasSerial)throw Error('La transferencia por serial requiere trazabilidad de entradas; todavía no está disponible.');
+ if(!Number.isFinite(qty)||qty<=0||!data.reason?.trim())throw Error('Indicá cantidad positiva y motivo.');
+ if(available(db,p.id,data.from)<qty)throw Error('Stock disponible insuficiente en el depósito de origen.');
+ const transfer=uid(),common={transfer,product:p.id,date:today(),type:'Transferencia',reason:data.reason.trim()};
+ return {...db,movements:[...db.movements,{...common,id:uid(),warehouse:data.from,qty:-qty},{...common,id:uid(),warehouse:data.to,qty}]};
+}
 export const balance = (db,doc) => round(doc.total+db.documents.filter(d=>d.source===doc.id&&d.status==='Confirmado'&&['Nota de crédito','Nota de débito'].includes(d.kind)).reduce((sum,d)=>sum+(d.kind==='Nota de crédito'?-d.total:d.total),0)-db.payments.filter(p=>p.document===doc.id).reduce((s,p)=>s+p.amount,0));
 export function saveContact(db, data) {
  if(!['Cliente','Proveedor','Ambos'].includes(data.kind))throw Error('Tipo de contacto inválido.');
@@ -48,7 +65,7 @@ export function adjust(db,data) {
  const qty=Number(data.qty);
  if(!db.products.some(p=>p.id===data.product)||!db.warehouses.some(w=>w.id===data.warehouse)) throw Error('Seleccioná producto y depósito.');
  if(!Number.isFinite(qty)||qty===0||!data.reason?.trim()) throw Error('Indicá una cantidad distinta de cero y un motivo.');
- if(stock(db,data.product,data.warehouse)+qty<0) throw Error('El ajuste dejaría existencias negativas.');
+ if(available(db,data.product,data.warehouse)+qty<0) throw Error('El ajuste dejaría existencias disponibles negativas o consumiría una reserva.');
  return {...db,movements:[...db.movements,{...data,id:uid(),qty,date:today(),type:'Ajuste'}]};
 }
 export function createDocument(db,data) {
@@ -83,11 +100,13 @@ export function createDocument(db,data) {
  const net=round(lines.reduce((sum,l)=>sum+round(l.qty*l.price*(1-l.discount/100)),0));
  const tax=round(lines.reduce((sum,l)=>sum+round(round(l.qty*l.price*(1-l.discount/100))*l.taxRate/100),0));
  const doc={...data,lines,subtotal,discountTotal:round(subtotal-net),taxTotal:tax,id:uid(),number:`${data.side==='sale'?'V':'C'}-${String(sequence).padStart(5,'0')}`,total:round(net+tax),rate:Number(data.rate)||0,status:'Borrador'};
+ delete doc.reservationActive;
  return {...db,documentSequence:sequence,documents:[...db.documents,doc]};
 }
 export function updateDocument(db,id,data) {
  const old=db.documents.find(d=>d.id===id);
  if(!old)throw Error('Documento no disponible.');
+ if(old.kind==='Pedido'&&old.reservationActive)throw Error('Liberá la reserva antes de editar la orden.');
  if(old.status!=='Borrador'&&!['Presupuesto','Pedido','Nota de entrega'].includes(old.kind))throw Error('Solo se pueden editar borradores de ventas.');
  if(db.documents.some(d=>d.source===id)||db.movements.some(m=>m.document===id)||db.payments.some(p=>p.document===id))throw Error('Este documento tiene operaciones relacionadas y no puede editarse.');
  const checked=createDocument({...db,documents:db.documents.filter(d=>d.id!==id)},{...old,...data,side:old.side,kind:old.kind}).documents.at(-1);
@@ -100,7 +119,7 @@ export function confirmDocument(db,id) {
  let movements=[];
  if(['Venta','Nota de entrega'].includes(doc.kind))validateSerials(db,doc);
  if(doc.kind==='Venta') {
-  for(const l of doc.lines) if(stock(db,l.product,doc.warehouse)<l.qty) throw Error('Stock insuficiente. Registrá una recepción o entrada antes de vender.');
+  for(const l of doc.lines) if(available(db,l.product,doc.warehouse,doc.source)<l.qty) throw Error('Stock disponible insuficiente. Revisá existencias y reservas de otras órdenes.');
   movements=doc.lines.map(l=>({id:uid(),product:l.product,warehouse:doc.warehouse,qty:-l.qty,date:doc.date,type:'Venta',reason:doc.number,document:doc.id}));
  }
  return {...db,documents:db.documents.map(d=>d.id===id?{...d,status:'Confirmado'}:d),movements:[...db.movements,...movements]};

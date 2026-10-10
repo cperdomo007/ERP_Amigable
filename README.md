@@ -24,9 +24,15 @@ Esta versión usa localStorage: no comparte datos entre equipos, no incluye aute
 
 El asistente consulta Gemini mediante `server/ai.mjs`. Configurar `GEMINI_API_KEY` y, opcionalmente, `GEMINI_MODEL` en `.env`, usando `.env.example` como referencia, y ejecutar `npm run ai` además de `npm run dev`. Escucha en 127.0.0.1:3001 y permite el frontend de 127.0.0.1:5173. Envía preguntas, historial reciente y un resumen del negocio al proveedor. Una respuesta real requiere credenciales válidas y no se verifica con las pruebas locales. Las claves privadas nunca deben estar en React.
 
-Los documentos calculan descuentos e IVA. Existen libros de compras/ventas, retenciones internas y exportación TXT IVA/XML ISLR con validación estructural; aceptación tributaria pendiente de comprobar. Se pueden editar clientes/proveedores y productos, gestionar seriales en venta/entrega y generar notas comerciales de crédito/débito. Las recepciones generan deuda interna; factura del proveedor separada pendiente. No incluye emisión fiscal certificada, contabilidad completa, devoluciones, reversos ni transferencias entre depósitos. Cobros/pagos son registros internos. Operaciones en la moneda del documento; pagos cruzados pendientes.
+Los documentos calculan descuentos e IVA. Existen libros de compras/ventas, retenciones internas y exportación TXT IVA/XML ISLR con validación estructural; aceptación tributaria pendiente de comprobar. Se pueden editar clientes/proveedores y productos, gestionar seriales en venta/entrega y generar notas comerciales de crédito/débito. Las recepciones generan deuda interna; factura del proveedor separada pendiente. No incluye emisión fiscal certificada, contabilidad completa, devoluciones ni reversos. Cobros/pagos son registros internos. Operaciones en la moneda del documento; pagos cruzados pendientes.
 
-## Restauración de respaldos
+## Inventario: disponibilidad y transferencias
+
+En Productos y stock se consulta stock físico, reservado y disponible por depósito. Las órdenes confirmadas pendientes de facturar permiten reservar todas sus cantidades o liberar la reserva. Reservar no mueve existencias. Una factura confirmada consume la reserva de su propia orden y descuenta stock; otras facturas, ajustes negativos y transferencias respetan las reservas. Liberar la reserva permite editar la orden nuevamente. Los pedidos existentes comienzan sin reserva y se reservan manualmente.
+
+Transferir entre depósitos registra una salida y una entrada vinculadas en una sola escritura local, sin cambiar el stock total. Requiere cantidad positiva, motivo y depósitos diferentes. Productos con serial todavía no admiten transferencia hasta incorporar trazabilidad de entradas. El respaldo verifica que cada transferencia tenga sus dos movimientos balanceados. Estas operaciones siguen sujetas a la limitación de una sesión local; no ofrecen transacciones multiusuario.
+
+## Validación del respaldo
 
 En Configuración → Respaldos, el JSON versión 1 se valida antes de abrir la confirmación de reemplazo: identificadores, referencias, tipos, estados, cantidades e importes finitos, fechas, usuarios/roles y estructuras fiscales opcionales. Un error identifica el campo y evita importar. Los campos adicionales compatibles se conservan sin transformar IDs ni saldos. Campos fiscales de exportación pueden estar vacíos mientras el registro está en preparación; se validan al exportar.
 
