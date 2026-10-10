@@ -1,0 +1,6 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {savePurchaseRecord,purchaseRow,purchaseSummary} from '../src/purchase-book.mjs';
+const db={contacts:[{id:'p',name:'Proveedor',kind:'Proveedor'}]},data={supplier:'p',period:'202610',invoiceDate:'2026-10-05',invoice:'001',control:'00-001',documentType:'01',origin:'Interna',generalBase:1000,generalRate:16,exempt:100,retained:120,voucher:'20261000000001',retentionDate:'2026-10-06'};
+test('libro calcula IVA, total y resumen sin crear movimientos',()=>{const result=savePurchaseRecord(db,data),row=result.purchaseFiscalRecords[0];assert.equal(row.generalTax,160);assert.equal(row.total,1260);assert.equal(result.movements,undefined);assert.equal(purchaseSummary([row]).Internageneral.base,1000);});
+test('notas de crédito se restan del resumen, duplicados se bloquean',()=>{const next=savePurchaseRecord(db,data);assert.throws(()=>savePurchaseRecord(next,data),/duplicado/);const credit=purchaseRow({...data,documentType:'03',generalBase:200});assert.equal(purchaseSummary([next.purchaseFiscalRecords[0],credit]).Internageneral.base,800);assert.throws(()=>savePurchaseRecord(db,{...data,documentType:'03'}),/afectada/);assert.throws(()=>savePurchaseRecord(db,{...data,retained:161}),/superar/);});
