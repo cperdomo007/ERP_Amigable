@@ -10,7 +10,7 @@ export default function Taxes({db,tab='Impuestos',commit,exportRows}){
  const [editing,setEditing]=useState(null),[query,setQuery]=useState(''),[from,setFrom]=useState(''),[to,setTo]=useState(''),[error,setError]=useState('');
  const settings=db.taxSettings||{},taxes=db.taxes||[],records=db.taxRetentions||[];
  const contact=id=>db.contacts.find(c=>c.id===id)?.name||'—';
- const save=fn=>{try{if(commit(fn)){setEditing(null);setError('')}}catch(e){setError(e.message)}};
+ const save=async fn=>{try{if(await commit(fn)){setEditing(null);setError('')}}catch(e){setError(e.message)}};
  const field=(label,name,props={})=><label className="field"><span>{label}</span><input name={name} defaultValue={editing?.[name]??''} {...props}/></label>;
  const table=(headers,rows)=><div className="table-wrap"><table><thead><tr>{headers.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={i}>{r.map((v,j)=><td key={j}>{v}</td>)}</tr>)}{!rows.length&&<tr><td colSpan={headers.length}>No hay registros.</td></tr>}</tbody></table></div>;
  const filters=<div className="journal-filters"><label className="field"><span>Buscar</span><input value={query} onChange={e=>setQuery(e.target.value)}/></label><label className="field"><span>Desde</span><input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label><label className="field"><span>Hasta</span><input type="date" min={from} value={to} onChange={e=>setTo(e.target.value)}/></label></div>;

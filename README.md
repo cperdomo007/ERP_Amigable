@@ -20,7 +20,7 @@ En Clientes y proveedores: Exportar clientes descarga un .xlsx con todos los con
 
 ## Límites explícitos
 
-Esta versión usa localStorage: no comparte datos entre equipos, no incluye autenticación ni permisos reales ni backend. No usar con información empresarial real o como sistema de producción. Los movimientos locales son coherentes en una sesión, pero no hay protección para usuarios concurrentes o múltiples pestañas. No editar la misma base simultáneamente en varias pestañas.
+Esta versión guarda en MySQL mediante una API local en 127.0.0.1:3002. La interfaz usa 127.0.0.1:5173. La primera carga migra la copia local del navegador si la empresa no existe, sin borrar esa copia. Cada escritura usa transacción, revisión e idempotencia; una sesión desactualizada recibe un conflicto y debe recargarse. Todavía no incluye autenticación ni permisos efectivos por usuario; solo acceso desde el equipo local. No se considera lista para producción.
 
 El asistente consulta Gemini mediante `server/ai.mjs`. Configurar `GEMINI_API_KEY` y, opcionalmente, `GEMINI_MODEL` en `.env`, usando `.env.example` como referencia, y ejecutar `npm run ai` además de `npm run dev`. Escucha en 127.0.0.1:3001 y permite el frontend de 127.0.0.1:5173. Envía preguntas, historial reciente y un resumen del negocio al proveedor. Una respuesta real requiere credenciales válidas y no se verifica con las pruebas locales. Las claves privadas nunca deben estar en React.
 
@@ -30,7 +30,7 @@ Los documentos calculan descuentos e IVA. Existen libros de compras/ventas, rete
 
 En Productos y stock se consulta stock físico, reservado y disponible por depósito. Las órdenes confirmadas pendientes de facturar permiten reservar todas sus cantidades o liberar la reserva. Reservar no mueve existencias. Una factura confirmada consume la reserva de su propia orden y descuenta stock; otras facturas, ajustes negativos y transferencias respetan las reservas. Liberar la reserva permite editar la orden nuevamente. Los pedidos existentes comienzan sin reserva y se reservan manualmente.
 
-Transferir entre depósitos registra una salida y una entrada vinculadas en una sola escritura local, sin cambiar el stock total. Requiere cantidad positiva, motivo y depósitos diferentes. Productos con serial todavía no admiten transferencia hasta incorporar trazabilidad de entradas. El respaldo verifica que cada transferencia tenga sus dos movimientos balanceados. Estas operaciones siguen sujetas a la limitación de una sesión local; no ofrecen transacciones multiusuario.
+Transferir entre depósitos registra una salida y una entrada vinculadas en una sola escritura local, sin cambiar el stock total. Requiere cantidad positiva, motivo y depósitos diferentes. Productos con serial todavía no admiten transferencia hasta incorporar trazabilidad de entradas. El respaldo verifica que cada transferencia tenga sus dos movimientos balanceados. Estas operaciones se guardan en una transacción MySQL con control de revisión. Las pestañas desactualizadas deben recargar; no hay acceso efectivo por usuario todavía.
 
 ## Validación del respaldo
 
@@ -40,12 +40,12 @@ La validación estructural no certifica conciliación contable ni cumplimiento f
 
 ## Render
 
-El archivo render.yaml permite alojar esta demo como sitio estático: build `npm ci && npm run build`, carpeta `dist`. El sitio público mostrará una demo vacía; los datos quedan en el navegador del visitante. Publicar esta demo no proporciona backend ni base de datos compartida.
+El archivo render.yaml permite alojar esta demo como sitio estático: build `npm ci && npm run build`, carpeta `dist`. El sitio público mostrará una demo vacía; los datos quedan en el navegador del visitante. El sitio estático por sí solo no despliega la API MySQL local; se requiere adaptar el alojamiento antes de publicar esta versión conectada.
 
 ## Siguiente etapa para producción
 
 ### MySQL local
 
-La base seleccionada es `ERP_AmigableDB`; todas las tablas llevan prefijo `SUMI_`. El esquema y comandos de migración, importación y exportación están en `server/mysql`. Consultar `server/mysql/README.md` antes de ejecutarlos. La interfaz conserva localStorage hasta completar la API y verificar la migración real. Configurar credenciales únicamente en `.env`.
+La base seleccionada es `ERP_AmigableDB`; todas las tablas llevan prefijo `SUMI_`. El esquema y comandos de migración, importación y exportación están en `server/mysql`. Consultar `server/mysql/README.md` antes de ejecutarlos. La interfaz ya lee y guarda mediante la API MySQL. Ejecutar `npm run api` además de `npm run dev`. Configurar credenciales únicamente en `.env`.
 
-Backend con transacciones PostgreSQL en Neon, cantidades y dinero con NUMERIC, autenticación verificada en servidor, permisos por empresa, idempotencia, auditoría, migraciones, respaldos y restauración comprobada. Luego conectar IA mediante funciones autorizadas y validar requisitos comerciales y fiscales con la empresa.
+Completar autenticación y permisos de servidor, cálculo decimal integral, auditoría por usuario, escalabilidad y requisitos fiscales. MySQL, guardado transaccional, revisión, idempotencia y respaldos automáticos por operación ya están conectados. La API actual guarda instantáneas validadas de una empresa local; no sustituye una API de operaciones de negocio autorizadas.

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "api": "node server/api.mjs",
     "db:migrate": "node server/mysql/migrate.mjs",
     "db:import": "node server/mysql/import-backup.mjs",
     "db:export": "node server/mysql/export-backup.mjs",
