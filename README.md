@@ -44,4 +44,8 @@ El archivo render.yaml permite alojar esta demo como sitio estático: build `npm
 
 ## Siguiente etapa para producción
 
+### MySQL local
+
+La base seleccionada es `ERP_AmigableDB`; todas las tablas llevan prefijo `SUMI_`. El esquema y comandos de migración, importación y exportación están en `server/mysql`. Consultar `server/mysql/README.md` antes de ejecutarlos. La interfaz conserva localStorage hasta completar la API y verificar la migración real. Configurar credenciales únicamente en `.env`.
+
 Backend con transacciones PostgreSQL en Neon, cantidades y dinero con NUMERIC, autenticación verificada en servidor, permisos por empresa, idempotencia, auditoría, migraciones, respaldos y restauración comprobada. Luego conectar IA mediante funciones autorizadas y validar requisitos comerciales y fiscales con la empresa.

@@ -22,7 +22,7 @@ Orden provisional por reducción de riesgo y valor operativo; esfuerzo relativo,
 
 | # | Mejora | Impacto / valor | Complejidad / esfuerzo | Riesgo | Dependencias | Etapa |
 |---|---|---|---|---|---|---|
-| 1 | API y PostgreSQL con transacciones y migración local | Alto / alto | Alta / alto | Pérdida al migrar | Modelo y validación de importación | MVP |
+| 1 | API y MySQL con transacciones y migración local; tablas SUMI_ | Alto / alto | Alta / alto | Pérdida al migrar | Modelo y validación de importación | MVP |
 | 2 | Login, permisos de servidor y aislamiento empresarial | Alto / alto | Alta / alto | Acceso cruzado | API y empresas | MVP |
 | 3 | Idempotencia y control de concurrencia en stock/cobros | Alto / alto | Alta / alto | Doble movimiento | Transacciones | MVP |
 | 4 | Respaldos automáticos y restauración comprobada | Alto / alto | Media / medio | Recuperación incompleta | Persistencia compartida | MVP |
@@ -41,4 +41,4 @@ V2: implementar 7–9 según reconocimiento autenticado y prioridades de negocio
 
 V3: implementar 10 y medir uso, tiempos operativos y errores. IA de consulta con datos mínimos, manejo de indisponibilidad y respuestas contrastadas; cualquier automatización de cambios requerirá reglas y autorizaciones específicas.
 
-Pendiente: completar reconocimiento de la instancia, confirmar objetivo comercial y módulos prioritarios, ajustar matriz y estimaciones. No se implementó ninguna mejora. El prompt exige presentar diagnóstico y recibir aprobación antes de modificar código; este informe preliminar no sustituye esa aprobación.
+Estado actualizado: el usuario aprobó implementación y eligió MySQL local, base ERP_AmigableDB y prefijo SUMI_. Validación de respaldos, reservas y transferencias locales implementadas. Esquema MySQL y herramientas de migración/importación/exportación preparados; conexión real pendiente de configurar contraseña (ER_ACCESS_DENIED_ERROR). API comercial, login y demás puntos del roadmap continúan pendientes. Ver server/mysql/README.md para los límites de esta etapa. Reconocimiento autenticado de Odoo sigue pendiente.
