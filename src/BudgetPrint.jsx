@@ -1,0 +1,15 @@
+import React from 'react';
+import './budget-print.css';
+import {documentAmounts} from './decimal.mjs';
+const amount=n=>new Intl.NumberFormat('es-VE',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n||0);
+const date=value=>/^\d{4}-\d{2}-\d{2}$/.test(value||'')?value.split('-').reverse().join('-'):value||'—';
+export default function BudgetPrint({db,doc}){
+ const company=db.company||{},client=db.contacts.find(c=>c.id===doc.contact)||{},currency=doc.currency==='VES'?'Bs.':doc.currency;
+ return <article className="document-paper budget-paper">
+  <header className="budget-company"><div className="budget-logo">{company.logo?<img src={company.logo} alt={company.name||'Logo de la empresa'}/>:<strong>{company.name||'Empresa sin configurar'}</strong>}</div><div><div><b>RIF:</b> {company.rif||'—'}</div><div><b>Dirección Fiscal:</b> {company.address||'—'}</div><div><b>Teléfonos:</b> {[company.phone,company.phone2].filter(Boolean).join(' / ')||'—'}</div><div><b>E-mail:</b> {company.email||'—'}</div>{company.website&&<div><b>Website:</b> {company.website}</div>}</div></header>
+  <div className="budget-title"><h2>PRESUPUESTO</h2><strong>N.º {doc.number}</strong></div>
+  <section className="budget-customer"><div><h3>Datos del Cliente</h3><div><b>Nombre o Razón Social:</b> {client.name||'—'}</div><div><b>RIF:</b> {client.rif||'—'}</div><div><b>Dirección:</b> {client.address||'—'}</div></div><div><div className="budget-boxes"><div><span>Cliente</span><strong>{client.code||client.rif||'—'}</strong></div><div><span>Fecha</span><strong>{date(doc.date)}</strong></div></div><div><b>Atención:</b> {client.contactPerson||'—'}</div><div><b>Teléfonos de Contacto:</b> {client.phone||'—'}</div></div></section>
+  <table className="budget-lines"><colgroup><col style={{width:'8%'}}/><col style={{width:'52%'}}/><col style={{width:'10%'}}/><col style={{width:'15%'}}/><col style={{width:'15%'}}/></colgroup><thead><tr><th>Ítem N.º</th><th>Descripción</th><th>Cant.</th><th>Precio Unit.</th><th>Total {currency}</th></tr></thead><tbody>{doc.lines.map((line,index)=>{const product=db.products.find(p=>p.id===line.product),totals=documentAmounts([line]);return <tr key={index}><td>{index+1}</td><td>{line.description||product?.name||'Producto no disponible'}{line.discount>0&&<small>Descuento: {line.discount}%</small>}</td><td>{line.qty}</td><td>{amount(line.price)}</td><td><strong>{amount(totals.net)}</strong></td></tr>})}{Array.from({length:Math.max(0,8-doc.lines.length)},(_,index)=><tr className="budget-empty" key={'empty'+index}><td>&nbsp;</td><td/><td/><td/><td/></tr>)}</tbody></table>
+  <footer className="budget-summary"><div className="budget-notes"><b>Observaciones:</b> {doc.notes||'—'}</div><div><p>Sub-Total <strong>{amount((doc.subtotal??doc.total)-(doc.discountTotal||0))}</strong></p><p>IVA <strong>{amount(doc.taxTotal)}</strong></p><p className="budget-net">TOTAL NETO {currency} <strong>{amount(doc.total)}</strong></p></div></footer>
+ </article>;
+}
