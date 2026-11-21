@@ -1,7 +1,8 @@
+import {apiRequest} from './persistence.mjs';
 import React,{useEffect,useState} from 'react';
 export default function BackupHistory({restore}){
  const [rows,setRows]=useState([]),[error,setError]=useState(''),[loading,setLoading]=useState(false);
- async function request(path){const r=await fetch('/api/erp/'+path,{headers:{'X-ERP-Client':'desktop'}});const result=await r.json();if(!r.ok)throw Error(result.error);return result}
+ const request=apiRequest;
  async function refresh(){setLoading(true);setError('');try{setRows(await request('backups'))}catch(e){setError(e.message)}finally{setLoading(false)}}
  useEffect(()=>{refresh()},[]);
  async function choose(revision){setLoading(true);try{const db=await request('backups/'+revision);restore(db)}catch(e){setError(e.message)}finally{setLoading(false)}}

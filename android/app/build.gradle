@@ -1,0 +1,30 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.pyme360.mobile'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.pyme360.mobile'
+        minSdk 26
+        targetSdk 35
+        versionCode 15
+        versionName '1.5.0'
+    }
+    buildTypes {
+        debug { applicationIdSuffix '.debug'; manifestPlaceholders = [cleartext: 'true'] }
+        release { manifestPlaceholders = [cleartext: 'false'] }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+tasks.register('checkWebAssets') {
+    doLast {
+        if (!file('src/main/assets/web/index.html').exists()) {
+            throw new GradleException('Primero ejecutar npm run build:android desde la raíz del ERP.')
+        }
+    }
+}
+tasks.named('preBuild').configure { dependsOn 'checkWebAssets' }

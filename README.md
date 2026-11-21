@@ -1,4 +1,8 @@
-# ERP Amigable
+# Pyme 360 v1.5
+
+Entrega 1.5.0. Arquitectura: React y Node.js en Render; MySQL `railway` y API móvil independiente en Railway; app Android Flutter en `mobile`. Configuración y pendientes en [deploy/README.md](deploy/README.md). No se ha verificado ni realizado el despliegue en las cuentas del proveedor. El código histórico Java/React de `android` se conserva como referencia; la entrega móvil vigente es Flutter.
+
+La app Flutter **Pyme 360** está en [`mobile`](mobile/README.md). Reutiliza la interfaz React empaquetada y sus módulos, con conexión y sesión administradas en Dart. Para un teléfono real se necesita una dirección HTTPS accesible de la API Railway.
 
 Primera versión funcional de prueba en React para una comercializadora en Venezuela. Incluye clientes/proveedores, productos, depósitos, ajustes, presupuestos, pedidos, ventas, pedidos de compra, recepciones parciales, cuentas pendientes, cobros/pagos parciales y panel general. Importes en USD o VES con tasas históricas. Exportación CSV y respaldo JSON.
 
@@ -40,7 +44,7 @@ La validación estructural no certifica conciliación contable ni cumplimiento f
 
 ## Render
 
-El archivo render.yaml permite alojar esta demo como sitio estático: build `npm ci && npm run build`, carpeta `dist`. La interfaz requiere una API autenticada conectada a MySQL para operar. El sitio estático por sí solo no despliega la API MySQL local; se requiere adaptar el alojamiento antes de publicar esta versión conectada.
+El archivo `render.yaml` configura un servicio Node gratuito: compila React y sirve `dist` y `/api/erp` desde el mismo origen. `DATABASE_URL` apunta a MySQL de Railway; `DATABASE_SSL=true` verifica su certificado. La API móvil se configura por separado con `railway.toml`. Ver [deploy/README.md](deploy/README.md).
 
 ## Siguiente etapa para producción
 
@@ -51,6 +55,24 @@ La base seleccionada es `ERP_AmigableDB`; todas las tablas llevan prefijo `SUMI_
 Autenticación, permisos de servidor, cálculo decimal, auditoría, comandos de negocio y respaldos locales están implementados. Para producción quedan alojamiento seguro, respaldos externos, escalabilidad y requisitos fiscales.
 
 ## Acceso y mejoras actuales
+
+### Usuarios para web y Android
+
+En Configuración → Roles se definen permisos de consulta, creación y modificación por módulo. En Configuración → Usuarios se crea el perfil y se asigna un rol. Después de guardar un usuario nuevo, se abre la asignación de contraseña; también se accede desde el botón Contraseña del listado. La contraseña requiere entre 12 y 256 caracteres y confirmación. El perfil y la contraseña se guardan en pasos separados: el perfil nuevo no puede iniciar sesión hasta asignar la contraseña. Crear perfiles requiere permiso de creación en Configuración; editar perfiles y asignar contraseñas requiere permiso de modificación.
+
+Web y Android nativo usan la misma empresa, usuario y contraseña. Desactivar un usuario impide iniciar sesión y bloquea las siguientes solicitudes de sus sesiones existentes. El cambio de contraseña guarda un hash scrypt, revoca todas las sesiones de ese usuario y registra auditoría, dentro de una transacción. El propietario debe permanecer activo. Las contraseñas y tokens no forman parte del respaldo comercial.
+
+La API admite la app Pyme 360 y otros clientes Android nativos mediante el siguiente contrato:
+
+- `POST /api/erp/auth/login`, encabezado `X-ERP-Client: mobile`, JSON `{ "company": "empresa-local", "username": "usuario", "password": "contraseña" }`. Devuelve el estado autorizado junto con `accessToken`, `tokenType: "Bearer"` y `expiresIn: 28800` (ocho horas); no emite cookie.
+- Las siguientes solicitudes envían `X-ERP-Client: mobile` y `Authorization: Bearer <accessToken>`. Se usan las mismas rutas y permisos de la web. Las escrituras en `/commands` conservan revisión, idempotencia y `expectedActor: { company, userId }`.
+- `POST /api/erp/auth/logout` con JSON `{}` revoca el token actual. Ante HTTP 401, borrar el token del dispositivo y solicitar un nuevo inicio de sesión. Guardar el token en almacenamiento protegido del dispositivo, sin registrarlo en logs.
+
+La web conserva su cookie HttpOnly y SameSite=Strict; no recibe tokens en JSON. Se mantiene compatibilidad con `X-ERP-Client: desktop` y se acepta `web`. `ERP_ALLOWED_ORIGINS` define los orígenes web admitidos (separados por coma); no habilita CORS entre dominios. Publicar frontend y `/api/erp` en un mismo origen mediante proxy. En HTTPS, configurar `ERP_SECURE_COOKIES=true`. Los clientes móviles nativos no envían `Origin`.
+
+La API sigue escuchando en 127.0.0.1:3002; para usar un teléfono se requiere un alojamiento o proxy HTTPS accesible desde el dispositivo. MySQL permanece detrás de la API, sin conexión directa desde el móvil. La compilación de la app se documenta en `android/README.md`.
+
+Validación: `npm test`; integración real de usuarios, permisos, aislamiento, login móvil, revocación web/móvil y logout con `$env:ERP_MYSQL_TEST='1'; node --test tests/auth-integration.test.mjs` en PowerShell.
 
 Administrador local: admin; empresa: empresa-local. Acceso inicial en work/ERP-admin-access.txt, excluido de Git. Ejecutar npm run api y npm run dev. Usuarios/roles/contraseñas se administran en Configuración; los permisos se comprueban en servidor.
 

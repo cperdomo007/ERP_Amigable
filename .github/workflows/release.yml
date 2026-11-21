@@ -1,0 +1,48 @@
+name: Pyme 360 release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  verify-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm run build:flutter
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.50.1'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+        working-directory: mobile
+      - run: flutter analyze
+        working-directory: mobile
+      - run: flutter test
+        working-directory: mobile
+      - run: flutter build apk --debug
+        working-directory: mobile
+      - run: cp mobile/build/app/outputs/flutter-apk/app-debug.apk Pyme360-1.5.0-flutter-pruebas.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pyme360-1.5.0-flutter-pruebas
+          path: Pyme360-1.5.0-flutter-pruebas.apk
+      - name: Publicar entrega de pruebas
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" Pyme360-1.5.0-flutter-pruebas.apk --title 'Pyme 360 v1.5' --notes 'Código web y API para Render/Railway. Contenedor Android migrado a Flutter con módulos React locales y sesión Dart. APK de pruebas; requiere firma de la empresa para distribución comercial. Despliegue y configuración de cuentas pendientes; consultar deploy/README.md.'

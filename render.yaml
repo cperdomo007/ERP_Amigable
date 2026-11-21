@@ -1,10 +1,27 @@
 services:
   - type: web
-    name: erp-amigable-demo
-    runtime: static
+    name: pyme-360
+    runtime: node
+    plan: free
     buildCommand: npm ci && npm run build
-    staticPublishPath: ./dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 22.16.0
+      - key: ERP_HOST
+        value: 0.0.0.0
+      - key: ERP_SERVE_WEB
+        value: 'true'
+      - key: ERP_FILE_BACKUPS
+        value: 'false'
+      - key: ERP_SECURE_COOKIES
+        value: 'true'
+      - key: DATABASE_SSL
+        value: 'true'
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SSL_CA
+        sync: false
+      - key: ERP_ALLOWED_ORIGINS
+        sync: false

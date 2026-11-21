@@ -1,8 +1,9 @@
 {
-  "name": "erp-amigable",
-  "version": "1.0.0",
+  "name": "pyme-360",
+  "version": "1.5.0",
   "type": "module",
   "scripts": {
+    "start": "node server/run-api.mjs",
     "api": "node server/run-api.mjs",
     "init:admin": "node server/init-admin.mjs",
     "db:migrate": "node server/mysql/migrate.mjs",
@@ -11,6 +12,8 @@
     "ai": "node server/ai.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
+    "build:android": "node scripts/build-android-web.mjs",
+    "build:flutter": "node scripts/build-android-web.mjs --flutter",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test tests/*.test.mjs"
   },

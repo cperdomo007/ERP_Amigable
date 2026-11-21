@@ -1,6 +1,9 @@
+import {createMobileTransport} from './mobile-transport.mjs';
+const mobileRequest=typeof window!=='undefined'&&window.Pyme360Native?createMobileTransport(window.Pyme360Native,window):null;
 export const authEvents=typeof BroadcastChannel!=='undefined'?new BroadcastChannel('sumi-auth'):null;
 authEvents?.unref?.();
 export async function apiRequest(path,body){
+ if(mobileRequest)return mobileRequest(path,body);
  const response=await fetch('/api/erp/'+path,{method:body?'POST':'GET',headers:{'X-ERP-Client':'desktop',...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(60000)});
  const result=await response.json();if(!response.ok){const error=new Error(result.error||'No se pudo conectar con MySQL.');error.status=response.status;error.code=result.code;throw error}return result;
 }

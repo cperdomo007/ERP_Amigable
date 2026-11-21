@@ -1,6 +1,7 @@
 import {scrypt as scryptCallback,randomBytes,createHash,timingSafeEqual} from 'node:crypto';
 import {promisify} from 'node:util';
 import {StoreError} from './mysql/store.mjs';
+import {transaction} from './mysql/connection.mjs';
 const scrypt=promisify(scryptCallback),sha=v=>createHash('sha256').update(v).digest('hex');
 export async function hashPassword(password){if(typeof password!=='string'||password.length<12||password.length>256)throw new StoreError(400,'La contraseña debe tener entre 12 y 256 caracteres.');const salt=randomBytes(16).toString('hex'),key=await scrypt(password,salt,64);return `scrypt:${salt}:${Buffer.from(key).toString('hex')}`}
 export async function verifyPassword(password,hash){try{const [type,salt,key]=hash.split(':');if(type!=='scrypt'||typeof password!=='string'||password.length>256)return false;const actual=Buffer.from(await scrypt(password,salt,64)),expected=Buffer.from(key,'hex');return actual.length===expected.length&&timingSafeEqual(actual,expected)}catch{return false}}
@@ -13,9 +14,23 @@ export async function login(pool,{company,username,password}){
  failures.delete(key);const token=randomBytes(32).toString('hex');await pool.execute('INSERT INTO SUMI_sessions(token_hash,company_id,user_id,expires_at) VALUES (?,?,?,DATE_ADD(UTC_TIMESTAMP(),INTERVAL 8 HOUR))',[sha(token),company,rows[0].id]);return {token,actor:await resolveActor(pool,company,rows[0].id)};
 }
 export async function resolveActor(connection,company,userId){const [rows]=await connection.execute('SELECT u.id,u.username,u.active,r.payload AS role,c.is_owner FROM SUMI_users u JOIN SUMI_roles r ON r.company_id=u.company_id AND r.id=u.role_id JOIN SUMI_credentials c ON c.company_id=u.company_id AND c.user_id=u.id WHERE u.company_id=? AND u.id=?',[company,userId]);if(!rows.length||!rows[0].active)throw new StoreError(401,'Sesión no disponible.');const row=rows[0],role=typeof row.role==='string'?JSON.parse(row.role):row.role;return {company,userId:row.id,username:row.username,owner:!!row.is_owner,permissions:role.permissions||{}}}
-export async function authenticate(pool,cookie=''){const token=cookie.split(';').map(v=>v.trim()).find(v=>v.startsWith('sumi_session='))?.slice(13);if(!token||!/^\w{64}$/.test(token))throw new StoreError(401,'Iniciá sesión para continuar.');const [rows]=await pool.execute('SELECT company_id,user_id FROM SUMI_sessions WHERE token_hash=? AND expires_at>UTC_TIMESTAMP()',[sha(token)]);if(!rows.length)throw new StoreError(401,'La sesión venció.');return {...await resolveActor(pool,rows[0].company_id,rows[0].user_id),tokenHash:sha(token)}}
+export async function authenticate(pool,cookie='',authorization){const token=authorization!==undefined?(/^Bearer ([a-f0-9]{64})$/.exec(authorization)?.[1]):cookie.split(';').map(v=>v.trim()).find(v=>v.startsWith('sumi_session='))?.slice(13);if(!token||!/^[a-f0-9]{64}$/.test(token))throw new StoreError(401,'Iniciá sesión para continuar.');const [rows]=await pool.execute('SELECT company_id,user_id FROM SUMI_sessions WHERE token_hash=? AND expires_at>UTC_TIMESTAMP()',[sha(token)]);if(!rows.length)throw new StoreError(401,'La sesión venció.');return {...await resolveActor(pool,rows[0].company_id,rows[0].user_id),tokenHash:sha(token)}}
 export function requirePermission(actor,module,action='view'){if(!actor.owner&&!actor.permissions[module]?.[action])throw new StoreError(403,`No tenés permiso para ${action} en ${module}.`)}
-export async function setCredential(pool,actor,userId,password){requirePermission(actor,'Configuración','edit');const [rows]=await pool.execute('SELECT id FROM SUMI_users WHERE company_id=? AND id=?',[actor.company,userId]);if(!rows.length)throw new StoreError(404,'Usuario inexistente.');const hash=await hashPassword(password);await pool.execute('INSERT INTO SUMI_credentials(company_id,user_id,password_hash) VALUES (?,?,?) ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash)',[actor.company,userId,hash]);await pool.execute('DELETE FROM SUMI_sessions WHERE company_id=? AND user_id=?',[actor.company,userId]);await pool.execute('INSERT INTO SUMI_audit(company_id,actor,action,details) VALUES (?,?,?,?)',[actor.company,actor.userId,'credential.set',JSON.stringify({userId})])}
+export async function setCredential(pool,actor,userId,password){
+ requirePermission(actor,'Configuración','edit');
+ const hash=await hashPassword(password);
+ return transaction(pool,async connection=>{
+  // Serialize credential changes with role/user writes for the same company.
+  await connection.execute('SELECT revision FROM SUMI_companies WHERE id=? FOR UPDATE',[actor.company]);
+  requirePermission(await resolveActor(connection,actor.company,actor.userId),'Configuración','edit');
+  const [rows]=await connection.execute('SELECT id FROM SUMI_users WHERE company_id=? AND id=?',[actor.company,userId]);
+  if(!rows.length)throw new StoreError(404,'Usuario inexistente.');
+  await connection.execute('INSERT INTO SUMI_credentials(company_id,user_id,password_hash) VALUES (?,?,?) ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash)',[actor.company,userId,hash]);
+  await connection.execute('DELETE FROM SUMI_sessions WHERE company_id=? AND user_id=?',[actor.company,userId]);
+  await connection.execute('INSERT INTO SUMI_audit(company_id,actor,action,details) VALUES (?,?,?,?)',[actor.company,actor.userId,'credential.set',JSON.stringify({userId})]);
+ });
+}
+
 export function projectState(state,actor){const {tokenHash,...publicActor}=actor;if(actor.owner)return {...state,actor:publicActor};const db=structuredClone(state.db),can=(m)=>!!actor.permissions[m]?.view,sale=can('Ventas')||can('Impuestos'),purchase=can('Compras')||can('Impuestos'),stock=can('Productos')||can('Movimientos')||sale||purchase,cash=can('Caja y cuentas');
  db.documents=db.documents.filter(d=>d.side==='sale'?sale||(cash&&['Venta','Nota de crédito','Nota de débito','Cuenta por cobrar'].includes(d.kind)):purchase||(cash&&['Recepción','Cuenta por pagar'].includes(d.kind)));
  // Keep source chains for visible financial documents, without unrelated documents.

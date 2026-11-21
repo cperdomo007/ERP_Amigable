@@ -4,14 +4,18 @@ import {authenticate,login,projectState,requirePermission,setCredential,resolveA
 import {executeCommands} from './commands.mjs';
 import {insights,verifiedAnswer} from './insights.mjs';
 import {geminiExplanation} from './gemini-explanation.mjs';
-export function createApi(pool){return http.createServer(async(req,res)=>{
+export function createApi(pool,{allowedOrigins=(process.env.ERP_ALLOWED_ORIGINS||'http://127.0.0.1:5173').split(',').map(v=>v.trim()).filter(Boolean),secureCookies=process.env.ERP_SECURE_COOKIES==='true'}={}){return http.createServer(async(req,res)=>{
  const send=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data))};
- if(req.headers['x-erp-client']!=='desktop'||(req.headers.origin&&req.headers.origin!=='http://127.0.0.1:5173'))return send(403,{error:'Origen no autorizado.'});
+ const mobile=req.headers['x-erp-client']==='mobile';
+ // Android nativo usa Bearer sin Origin; los navegadores usan cookies y una lista explícita de orígenes.
+ if(!['desktop','web','mobile'].includes(req.headers['x-erp-client'])||(mobile&&req.headers.origin)||(req.headers.origin&&!allowedOrigins.includes(req.headers.origin)))return send(403,{error:'Origen no autorizado.'});
+ const cookieOptions=`HttpOnly; SameSite=Strict; Path=/api/erp${secureCookies?'; Secure':''}`;
  try{
   let body={};if(req.method==='POST'){let chunks=[],size=0;for await(const chunk of req){size+=chunk.length;if(size>20*1024*1024)return send(413,{error:'Solicitud demasiado grande.'});chunks.push(chunk)}try{body=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}')}catch{throw new StoreError(400,'JSON inválido.')}}
-  if(req.method==='POST'&&req.url==='/api/erp/auth/login'){const result=await login(pool,body);res.setHeader('Set-Cookie',`sumi_session=${result.token}; HttpOnly; SameSite=Strict; Path=/api/erp; Max-Age=28800`);return send(200,projectState(await loadState(pool,result.actor.company),result.actor))}
-  const actor=await authenticate(pool,req.headers.cookie);
-  if(req.method==='POST'&&req.url==='/api/erp/auth/logout'){await pool.execute('DELETE FROM SUMI_sessions WHERE token_hash=?',[actor.tokenHash]);res.setHeader('Set-Cookie','sumi_session=; HttpOnly; SameSite=Strict; Path=/api/erp; Max-Age=0');return send(200,{ok:true})}
+  if(req.method==='POST'&&req.url==='/api/erp/auth/login'){const result=await login(pool,body);const state=projectState(await loadState(pool,result.actor.company),result.actor);if(mobile)return send(200,{...state,accessToken:result.token,tokenType:'Bearer',expiresIn:28800});res.setHeader('Set-Cookie',`sumi_session=${result.token}; ${cookieOptions}; Max-Age=28800`);return send(200,state)}
+  if(mobile&&!req.headers.authorization)throw new StoreError(401,'Iniciá sesión para continuar.');
+  const actor=await authenticate(pool,mobile?'':req.headers.cookie,mobile?req.headers.authorization:undefined);
+  if(req.method==='POST'&&req.url==='/api/erp/auth/logout'){await pool.execute('DELETE FROM SUMI_sessions WHERE token_hash=?',[actor.tokenHash]);if(!mobile)res.setHeader('Set-Cookie',`sumi_session=; ${cookieOptions}; Max-Age=0`);return send(200,{ok:true})}
   if(req.method==='GET'&&req.url==='/api/erp/state')return send(200,projectState(await loadState(pool,actor.company),actor));
   if(req.method==='GET'&&req.url==='/api/erp/alerts'){const result=insights(projectState(await loadState(pool,actor.company),actor).db);if(!actor.owner&&!actor.permissions.Productos?.view&&!actor.permissions.Movimientos?.view&&!actor.permissions.Ventas?.view&&!actor.permissions.Compras?.view)result.stock=[];return send(200,result)}
   if(req.method==='POST'&&req.url==='/api/erp/assistant'){if(typeof body.question!=='string'||!body.question.trim()||body.question.length>4000)throw new StoreError(400,'Pregunta inválida.');const q=body.question.toLowerCase();if(q.includes('stock')||q.includes('reposici')){if(!actor.owner&&!actor.permissions.Movimientos?.view&&!actor.permissions.Ventas?.view&&!actor.permissions.Compras?.view)requirePermission(actor,'Productos')}else if(q.includes('venta'))requirePermission(actor,'Ventas');else if(q.includes('cobrar')||q.includes('pagar')||q.includes('vencid'))requirePermission(actor,'Caja y cuentas');if(body.from&&body.to&&body.from>body.to)throw new StoreError(400,'Período invertido.');const verified=verifiedAnswer(projectState(await loadState(pool,actor.company),actor).db,body.question,body.from,body.to);if(body.mode==='gemini'){const generated=await geminiExplanation(body.question,verified);return send(200,{...verified,...generated})}return send(200,verified)}
