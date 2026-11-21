@@ -1,6 +1,7 @@
 services:
   - type: web
     name: pyme-360
+    branch: codex/pyme360-v1.5
     runtime: node
     plan: free
     buildCommand: npm ci && npm run build

@@ -4,7 +4,7 @@ Estado: configuración preparada; no se han inspeccionado paneles ni desplegado 
 
 ## Render: web y API web
 
-Crear un Web Service desde este repositorio usando render.yaml (plan free). Compilación: npm ci && npm run build. Inicio: npm start. Sirve React y /api/erp en el mismo dominio. Variables:
+Crear un Web Service desde la rama codex/pyme360-v1.5 de este repositorio usando render.yaml (plan free). Seleccionar también esa rama en el servicio API de Railway. Compilación: npm ci && npm run build. Inicio: npm start. Sirve React y /api/erp en el mismo dominio. Variables:
 
 - DATABASE_URL: URL pública TCP de MySQL Railway, base railway. La dirección privada railway.internal no es accesible desde Render.
 - DATABASE_SSL=true. MySQL debe aceptar TLS y presentar un certificado verificable. Si usa una CA privada, completar DATABASE_SSL_CA con su PEM. No desactivar validación para resolver errores de certificados; configurar TLS/proxy en el servidor MySQL antes de publicar.

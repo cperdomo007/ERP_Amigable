@@ -1,5 +1,7 @@
 # Pyme 360 para Android
 
+Contenedor Java anterior, conservado como referencia. La entrega vigente v1.5 se migró a Flutter en `mobile`; consultar `mobile/README.md`. La web también se llama Pyme 360.
+
 Aplicación Android híbrida: interfaz React del ERP empaquetada dentro de la APK y contenedor Java nativo para conexión, archivos e impresión. La interfaz funciona sin descargar código de un sitio remoto. Los datos requieren conexión con la API existente; no hay modo de trabajo sin conexión ni sincronización diferida.
 
 ## Uso
