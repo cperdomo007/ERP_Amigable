@@ -2,6 +2,7 @@ name: Pyme 360 release
 on:
   push:
     tags: ['v*']
+    branches: ['codex/pyme360-v1.5']
   workflow_dispatch:
 permissions:
   contents: write
@@ -23,6 +24,8 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.50.1'
